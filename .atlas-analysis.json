@@ -1,0 +1,51 @@
+{
+  "projectType": "general",
+  "projectName": "Pacman",
+  "projectDescription": "A classic Pacman clone built in C with SDL 1.2, featuring multi-monitor resolution management with xrandr and GLFW.",
+  "theme": "almond",
+  "primaryColor": "#FFD700",
+  "lightColor": "#FFE55C",
+  "darkColor": "#FFA500",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Getting Started",
+        "pages": ["introduction", "installation", "quickstart"]
+      },
+      {
+        "group": "Guides",
+        "pages": ["guides/building", "guides/running", "guides/controls"]
+      },
+      {
+        "group": "Technical Details",
+        "pages": ["architecture/overview", "architecture/graphics", "architecture/resolution-management", "architecture/game-logic"]
+      },
+      {
+        "group": "Reference",
+        "pages": ["reference/command-line", "reference/dependencies", "reference/file-structure"]
+      },
+      {
+        "group": "Development",
+        "pages": ["development/contributing", "development/troubleshooting"]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Classic Pacman gameplay with SDL 1.2",
+    "Automatic resolution restoration with xrandr",
+    "Multi-monitor support with extended display configuration",
+    "Fullscreen and windowed modes",
+    "Sound effects and background music with libmikmod",
+    "Traditional Makefile build system for Linux"
+  ],
+  "publicApiSurface": [
+    "./pacman -f (fullscreen mode)",
+    "./pacman -w (windowed mode)",
+    "guardarResolucionOriginal() - Save current display configuration",
+    "restaurarResolucionOriginal() - Restore original display settings",
+    "init_gfx() - Initialize SDL graphics subsystem",
+    "getsprites() - Load sprite graphics",
+    "menu_opciones() - Display main menu",
+    "stargame() - Start game loop"
+  ]
+}
