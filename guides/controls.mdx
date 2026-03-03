@@ -1,0 +1,641 @@
+---
+title: Game controls
+description: Master Pacman gameplay with detailed controls, mechanics, scoring system, and strategy tips for navigating the maze and defeating ghosts
+---
+
+Learn how to play Pacman, understand the controls, and master the game mechanics.
+
+## Menu controls
+
+The game starts with a main menu screen showing the Pacman logo and ghost characters.
+
+### Main menu
+
+| Key | Action |
+|-----|--------|
+| `SPACE` | Start the game |
+| `ESC` | Exit to system |
+
+<Note>
+  The menu features animated ghosts moving across the screen. Wait for them to complete their animation or press SPACE to begin immediately.
+</Note>
+
+## Game controls
+
+Once in the game, use arrow keys to navigate Pacman through the maze.
+
+### Movement keys
+
+<Tabs>
+  <Tab title="Arrow keys">
+    | Key | Direction | Code |
+    |-----|-----------|------|
+    | `↑` | Move up | `SDLK_UP` |
+    | `↓` | Move down | `SDLK_DOWN` |
+    | `→` | Move right | `SDLK_RIGHT` |
+    | `←` | Move left | `SDLK_LEFT` |
+  </Tab>
+  
+  <Tab title="System keys">
+    | Key | Action |
+    |-----|--------|
+    | `ESC` | Exit game |
+  </Tab>
+</Tabs>
+
+### Movement mechanics
+
+The control system has several important characteristics:
+
+<Steps>
+  <Step title="Direction input">
+    Press an arrow key to set Pacman's desired direction:
+    
+    ```c
+    if (keys[SDLK_UP]) {
+      pc.yf = ((pc.y - 1) * 32);
+      pc.dir = pc.x + pc.yf;
+      if (c_array[(int)pc.dir] != 0.0 && c_array[(int)pc.dir] != P) {
+        pc.inc_y = -1;
+        pc.inc_x = 0;
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="Movement validation">
+    The game checks if the desired direction is valid (not a wall):
+    - If valid: Pacman moves in that direction
+    - If blocked: Input is buffered until the next valid position
+  </Step>
+  
+  <Step title="Continuous movement">
+    Pacman continues moving in the current direction until:
+    - You press a different arrow key
+    - A wall blocks the path
+    - You reach a junction
+  </Step>
+</Steps>
+
+<Accordion title="Understanding the movement code">
+  The game uses a grid-based movement system:
+  
+  - **Grid size**: 32x26 cells (MAXX_A x MAXY_A)
+  - **Cell spacing**: 8 pixels (ESCALA)
+  - **Movement speed**: Variable based on level (0.4 to 0.7)
+  
+  Each direction sets increment values:
+  ```c
+  pc.inc_x = 1;   // Right
+  pc.inc_x = -1;  // Left
+  pc.inc_y = 1;   // Down
+  pc.inc_y = -1;  // Up
+  ```
+  
+  Position updates occur at:
+  ```c
+  pc.x += pc.inc_x;
+  pc.y += pc.inc_y;
+  ```
+</Accordion>
+
+## Gameplay mechanics
+
+Understanding the core game elements and how they interact.
+
+### Maze elements
+
+The maze contains several types of elements:
+
+| Element | Symbol | Description |
+|---------|--------|-------------|
+| Walls | `0` | Impassable barriers |
+| Paths | `C` | Paths with dots to collect |
+| Empty | `N` | Empty spaces (ghost house) |
+| Visited | `J` | Paths where dots were collected |
+| Door | `P` | Ghost house door (closed) |
+| Power pellets | `B` | Large dots that frighten ghosts |
+
+### Collecting dots
+
+The primary objective is collecting all dots in the maze.
+
+<Steps>
+  <Step title="Move over dots">
+    Navigate Pacman over paths marked with dots:
+    
+    ```c
+    if (c_array[(int)(pc.x + (pc.y * 32))] == C) {
+      c_array[(int)(pc.x + (pc.y * 32))] = J;  // Mark as visited
+      pc.puntos--;      // Decrease dot counter
+      pc.puntuacion += 10;  // Add 10 points
+    }
+    ```
+  </Step>
+  
+  <Step title="Track progress">
+    Total dots to collect: **226** (NUM_PUNTOS)
+    
+    Points per dot: **10**
+    
+    Your score increases as you collect each dot.
+  </Step>
+  
+  <Step title="Complete the level">
+    When all dots are collected (`pc.puntos == 0`), you advance to the next level:
+    
+    ```c
+    if (pc.puntos == 0) {
+      adelanta_nivel(&fan, &pc);
+    }
+    ```
+  </Step>
+</Steps>
+
+### Power pellets
+
+Four large power pellets are positioned at the maze corners.
+
+**Locations:**
+- Top-left corner: (7, 1)
+- Top-right corner: (27, 1)
+- Bottom-left corner: (7, 24)
+- Bottom-right corner: (27, 24)
+
+**Effects when collected:**
+
+<Tabs>
+  <Tab title="Scoring">
+    Power pellet value: **50 points**
+    
+    ```c
+    pc.puntuacion += 50;
+    ```
+  </Tab>
+  
+  <Tab title="Ghost behavior">
+    All normal ghosts become frightened:
+    
+    ```c
+    pc.estado_pcman = ENFADADO;
+    for (int i = 0; i < 4; ++i) {
+      if (fan.estado_fantasma[i] == NORMAL)
+        fan.estado_fantasma[i] = ENFADADO;
+    }
+    ```
+    
+    Ghosts turn blue and flee from Pacman.
+  </Tab>
+  
+  <Tab title="Duration">
+    Effect duration varies by level:
+    
+    | Level | Duration (ticks) | Seconds |
+    |-------|------------------|----------|
+    | 0 | 273 | ~15s |
+    | 1 | 198 | ~11s |
+    | 2 | 162 | ~9s |
+    | 3 | 126 | ~7s |
+    | 4-12 | 90 | ~5s |
+    | 13+ | 20 | ~1s |
+  </Tab>
+</Tabs>
+
+<Warning>
+  Power pellet duration decreases significantly at higher levels. Plan your ghost-hunting strategy accordingly.
+</Warning>
+
+## Ghost mechanics
+
+Four ghosts chase Pacman through the maze, each with distinct behavior.
+
+### Ghost types
+
+The four ghosts have different AI patterns:
+
+<Tabs>
+  <Tab title="Blue (Azul)">
+    **Index:** 0
+    
+    **Strategy:** Follows Pacman's previous position
+    
+    ```c
+    if (fan.estado_fantasma[0] == NORMAL) {
+      fan.find_x[0] = pc.old_x;
+      fan.find_y[0] = pc.old_y;
+    }
+    ```
+    
+    **Behavior:** Trails behind where Pacman was, attempting to cut off escape routes.
+  </Tab>
+  
+  <Tab title="Red (Rojo)">
+    **Index:** 1
+    
+    **Strategy:** Direct pursuit of Pacman
+    
+    ```c
+    if (fan.estado_fantasma[1] == NORMAL) {
+      fan.find_x[1] = pc.x;
+      fan.find_y[1] = pc.y;
+    }
+    ```
+    
+    **Behavior:** Most aggressive ghost. Always targets Pacman's current position.
+  </Tab>
+  
+  <Tab title="Yellow (Amarillo)">
+    **Index:** 2
+    
+    **Strategy:** Conditional pursuit
+    
+    ```c
+    if (fabs(pc.x - fan.x[2]) < 9 && fabs(pc.y - fan.y[2]) < 9) {
+      fan.find_x[2] = pc.x;
+      fan.find_y[2] = pc.y;
+    } else {
+      fan.find_x[2] = rand() % MAXX_A;
+      fan.find_y[2] = rand() % MAXY_A;
+    }
+    ```
+    
+    **Behavior:** Chases only when within 9 cells. Otherwise patrols randomly.
+  </Tab>
+  
+  <Tab title="Gray (Gris)">
+    **Index:** 3
+    
+    **Strategy:** Wider detection range
+    
+    ```c
+    if (fabs(pc.x - fan.x[3]) < 12 && fabs(pc.y - fan.y[3]) < 12) {
+      fan.find_x[3] = pc.x;
+      fan.find_y[3] = pc.y;
+    } else {
+      fan.find_x[3] = rand() % MAXX_A;
+      fan.find_y[3] = rand() % MAXY_A;
+    }
+    ```
+    
+    **Behavior:** Similar to yellow but with 12-cell detection radius.
+  </Tab>
+</Tabs>
+
+### Ghost states
+
+Ghosts can be in three different states:
+
+<Accordion title="Normal state (0)">
+  **Appearance:** Colored sprites (red, blue, yellow, gray)
+  
+  **Behavior:**
+  - Chase Pacman according to AI pattern
+  - Deadly on contact
+  - Move at level-specific speed
+  
+  **Collision result:**
+  ```c
+  if (fan.estado_fantasma[who] == NORMAL) {
+    pc.num_vidas--;  // Lose a life
+    if (pc.num_vidas < 0)
+      menu_opciones(FALSE);  // Game over
+    inicializa_structuras(pc, fan, FALSE);  // Reset positions
+  }
+  ```
+</Accordion>
+
+<Accordion title="Frightened state (1)">
+  **Appearance:** Blue ghosts (vulnerable)
+  
+  **Triggered by:** Collecting a power pellet
+  
+  **Behavior:**
+  - Flee from Pacman
+  - Move to random locations
+  - Can be eaten
+  
+  **Duration:** Varies by level (see power pellet duration table)
+</Accordion>
+
+<Accordion title="Dead state (2)">
+  **Appearance:** Just eyes
+  
+  **Behavior:**
+  - Return to ghost house
+  - Cannot harm Pacman
+  - Target position (16, 12) - ghost house center
+  
+  **Collision:** No effect, ghost passes through
+</Accordion>
+
+### Eating ghosts
+
+When you catch a frightened ghost, you earn points:
+
+```c
+if (fan.estado_fantasma[who] == ENFADADO) {
+  switch (control_puntos_fan_muerto) {
+    case 0: pc.puntuacion += 50;  break;  // 1st ghost
+    case 1: pc.puntuacion += 100; break;  // 2nd ghost
+    case 2: pc.puntuacion += 150; break;  // 3rd ghost
+    case 3: pc.puntuacion += 200; break;  // 4th ghost
+  }
+  fan.estado_fantasma[who] = MUERTO;
+}
+```
+
+**Ghost point values:**
+- 1st ghost: **50 points**
+- 2nd ghost: **100 points**
+- 3rd ghost: **150 points**
+- 4th ghost: **200 points**
+
+<Note>
+  Eating all four ghosts during one power pellet gives you a total of 500 bonus points (50+100+150+200).
+</Note>
+
+## Special features
+
+Advanced mechanics that affect gameplay.
+
+### Tunnels
+
+The maze has vertical tunnels for quick travel:
+
+```c
+if (pc.x == 16 && pc.y == 1) {
+  pc.x = 16;
+  pc.y = 24;  // Teleport to bottom
+  pc.inc_y = -1;
+} else if (pc.x == 16 && pc.y == 24) {
+  pc.x = 16;
+  pc.y = 1;   // Teleport to top
+  pc.inc_y = 1;
+}
+```
+
+**Tunnel location:** Center column (x=16) at top (y=1) and bottom (y=24)
+
+**Usage:** Move through the tunnel to quickly traverse the maze vertically.
+
+### Ghost house
+
+Ghosts start in the central ghost house and are released in sequence:
+
+**Release timing:**
+- Blue ghost: Ticks 50-100 (leaves first)
+- Red ghost: Ticks 100-150
+- Yellow ghost: Ticks 150-200
+- Gray ghost: Ticks 200-240
+
+**Exit strategy:**
+```c
+if (fan.x[who] == 17 && fan.y[who] == 12 && 
+    fan.estado_fantasma[who] == NORMAL) {
+  if (CntStep2 >= 50 * (who + 1) && CntStep2 <= 50 * (who + 2)) {
+    fan.inc_x[who] = 1;  // Move right to exit
+    fan.inc_y[who] = 0;
+  }
+}
+```
+
+### Collision detection
+
+The game uses distance-based collision detection:
+
+```c
+if (fabs((xf + j[who]) - (old_xp + jp + 1)) < 10 && 
+    fabs((yf + i[who]) - (old_yp + ip)) < 10) {
+  // Collision detected!
+}
+```
+
+**Collision radius:** ~10 pixels in both X and Y directions
+
+## Scoring system
+
+Understand how points are awarded.
+
+### Point values
+
+| Item | Points |
+|------|--------|
+| Dot | 10 |
+| Power pellet | 50 |
+| 1st ghost | 50 |
+| 2nd ghost | 100 |
+| 3rd ghost | 150 |
+| 4th ghost | 200 |
+
+### Score calculation
+
+**Maximum points per level:**
+
+```
+Dots: 226 × 10 = 2,260 points
+Power pellets: 4 × 50 = 200 points
+All ghosts (4 times): 4 × 500 = 2,000 points (if caught each time)
+
+Theoretical maximum: ~4,460+ points per level
+```
+
+**Score display:**
+
+Your score is displayed at the top of the screen:
+
+```c
+writef(40, 25, tablero->pixels, "%5d", pc.puntuacion);
+```
+
+## Game progression
+
+How the game difficulty increases.
+
+### Level system
+
+Starting configuration:
+
+```c
+pc.nivel = 0;           // Starting level
+pc.num_vidas = 2;       // 2 lives (displayed as 3 total)
+pc.puntuacion = 0;      // Starting score
+```
+
+### Speed progression
+
+Ghost speed increases with each level:
+
+```c
+float velocidades[14] = {
+  0.4,    // Level 0
+  0.4231, // Level 1
+  0.4462, // Level 2
+  0.4692, // Level 3
+  0.4923, // Level 4
+  0.5154, // Level 5
+  0.5385, // Level 6
+  0.5615, // Level 7
+  0.5846, // Level 8
+  0.6077, // Level 9
+  0.6308, // Level 10
+  0.6538, // Level 11
+  0.6769, // Level 12
+  0.7     // Level 13+
+};
+```
+
+Pacman speed: **0.5** (constant)
+
+<Warning>
+  At level 13+, ghosts move faster than Pacman (0.7 vs 0.5), making the game extremely challenging.
+</Warning>
+
+### Lives system
+
+You start with 2 lives (3 total including current):
+
+```c
+if (fan.estado_fantasma[who] == NORMAL) {
+  pc.num_vidas--;
+  if (pc.num_vidas < 0)
+    menu_opciones(FALSE);  // Game over
+}
+```
+
+**Life loss:** Getting caught by a normal ghost
+
+**Game over:** When `num_vidas < 0` (all lives lost)
+
+## Strategy tips
+
+Master the game with these proven strategies.
+
+### Dot collection strategy
+
+<Steps>
+  <Step title="Clear corners first">
+    Start by clearing dots near power pellets, saving the pellets for when ghosts get close.
+  </Step>
+  
+  <Step title="Plan your route">
+    Try to clear the maze systematically rather than randomly wandering.
+  </Step>
+  
+  <Step title="Use tunnels">
+    The center tunnel (x=16) is excellent for escaping pursuing ghosts.
+  </Step>
+</Steps>
+
+### Ghost evasion
+
+<Accordion title="Know your enemies">
+  - **Red ghost** is most dangerous - always knows your position
+  - **Blue ghost** follows where you were - change direction frequently
+  - **Yellow and gray ghosts** only chase when close - keep distance
+</Accordion>
+
+<Accordion title="Cornering technique">
+  When a ghost is approaching:
+  1. Wait at a junction
+  2. Let the ghost commit to a direction
+  3. Quickly turn perpendicular to escape
+</Accordion>
+
+### Power pellet timing
+
+<Accordion title="Optimal usage">
+  Best times to grab a power pellet:
+  - When multiple ghosts are nearby
+  - When trapped with limited escape routes
+  - When you can position yourself to catch multiple ghosts
+  
+  Avoid wasting pellets when ghosts are far away.
+</Accordion>
+
+<Accordion title="Ghost hunting">
+  After eating a power pellet:
+  1. **Red ghost** - Easiest to catch (always coming toward you)
+  2. Chase other ghosts quickly before effect wears off
+  3. Remember: 4 ghosts = 500 bonus points
+</Accordion>
+
+### Advanced techniques
+
+<Accordion title="Ghost house timing">
+  Remember ghost release timing:
+  - Early game: Fewer ghosts active
+  - Wait for ghosts to exit before entering central area
+  - Use this time to clear nearby dots safely
+</Accordion>
+
+<Accordion title="Speed advantage">
+  Early levels (0-12): You're faster or equal to ghosts
+  - Use your speed to your advantage
+  - Circle back on slower ghosts
+  - Create distance when needed
+  
+  Level 13+: Ghosts are faster
+  - Rely more on strategy than speed
+  - Use walls and turns to break line of sight
+  - Power pellets become essential
+</Accordion>
+
+## Animation and visuals
+
+Understanding the visual feedback.
+
+### Pacman animation
+
+Pacman has 3 animation frames per direction:
+
+```c
+if (CntStep3 == 0) 
+  putico(old_xp + jp, old_yp, pc_der, vaddr, 14, 15);   // Open
+else if (CntStep3 == 1) 
+  putico(old_xp + jp, old_yp, pc_der2, vaddr, 11, 15);  // Half open
+else 
+  putico(old_xp + jp, old_yp, bola, vaddr, 15, 15);     // Closed (circle)
+```
+
+This creates the classic "chomping" animation.
+
+### Ghost animation
+
+Ghosts alternate between 2 frames:
+
+```c
+const int frame = (CntStep % 2 == 0) ? 0 : 1;
+```
+
+Each ghost has sprites for all 4 directions × 2 frames = 8 sprites each.
+
+### Visual states
+
+<Tabs>
+  <Tab title="Normal gameplay">
+    - Colored ghosts (red, blue, yellow, gray)
+    - Pacman chomping in movement direction
+    - Dots and power pellets visible
+  </Tab>
+  
+  <Tab title="Frightened mode">
+    - Ghosts turn blue (miedo/miedo2 sprites)
+    - Power pellets blink (6 ticks on, 6 ticks off)
+    - Ghost movement becomes erratic
+  </Tab>
+  
+  <Tab title="Death">
+    - Dead ghosts show only eyes (ojos sprite)
+    - Pacman dies and positions reset
+    - Lives counter decreases
+  </Tab>
+</Tabs>
+
+## Next steps
+
+Now that you understand the controls and mechanics:
+
+- Review the [building guide](/guides/building) to compile the game
+- Check the [running guide](/guides/running) for launch options
+- Explore `src/teclado.c` for input handling details
+- Study `src/mov_fig.c` for movement mechanics

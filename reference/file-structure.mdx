@@ -1,0 +1,469 @@
+---
+title: File structure
+description: Complete directory structure and organization of the Pacman project
+---
+
+The Pacman project follows a traditional C project layout with source code, headers, game data, and build files organized in separate directories.
+
+## Project root
+
+```
+pacman/
+├── Makefile           # Build configuration
+├── Makefile.old       # Previous Makefile version
+├── README.md          # Project documentation
+├── .gitignore         # Git exclusion rules
+├── sound              # Sound utility executable
+├── src/               # Source code directory
+└── data/              # Game assets (graphics and audio)
+```
+
+### Root files
+
+<ParamField path="Makefile" type="file">
+  Main build configuration using GNU Make.
+  
+  **Key settings:**
+  - Compiler: `gcc`
+  - Optimization: `-O3 -ffast-math -funroll-loops`
+  - SDL include path: `/usr/include/SDL`
+  - Links: SDL, SDL_image, libmikmod, GLFW
+  
+  **Targets:**
+  - `all` - Build the pacman executable (default)
+  - `clean` - Remove object files and executable
+  
+  See: [Dependencies reference](/reference/dependencies)
+</ParamField>
+
+<ParamField path="README.md" type="file">
+  Project documentation in Spanish, including:
+  - Feature overview
+  - Installation instructions
+  - Usage examples
+  - Resolution restoration explanation
+  - Git ignore policy
+</ParamField>
+
+<ParamField path=".gitignore" type="file">
+  Git exclusion rules:
+  ```
+  *.o        # Object files from compilation
+  *~         # Editor backup files (Emacs, Vim)
+  pacman     # Compiled executable
+  ```
+</ParamField>
+
+<ParamField path="sound" type="binary">
+  Compiled utility executable for sound/audio operations.
+  
+  **Type:** ELF 64-bit LSB executable
+  
+  **Platform:** Linux x86-64
+</ParamField>
+
+## Source directory
+
+```
+src/
+├── include/           # Header files
+├── main.c             # Entry point and initialization
+├── gfx.c              # Graphics and rendering
+├── menuopt.c          # Menu and options
+├── mov_fig.c          # Character movement
+├── sprites.c          # Sprite management
+├── movefant.c         # Ghost movement logic
+├── misc.c             # Miscellaneous utilities
+├── fantasma.c         # Ghost behavior
+├── frutas.c           # Fruit/bonus items
+├── intro.c            # Intro screen
+├── loadimage.c        # Image loading
+├── fade.c             # Fade effects
+├── array.c            # Array utilities
+├── paleta.c           # Color palette
+├── scores.c           # Score management
+├── sprfan.c           # Ghost sprites
+├── teclado.c          # Keyboard input
+├── trata_nu.c         # Number handling
+├── niveles.c          # Level data
+├── writef.c           # Text rendering
+├── writef             # Text utility (binary)
+├── memcpy32.asm       # Optimized memory copy (x86 asm)
+└── mov_fig.c.original # Backup of mov_fig.c
+```
+
+### Core source files
+
+<AccordionGroup>
+
+<Accordion title="main.c (197 lines)">
+  **Purpose:** Program entry point and initialization
+  
+  **Key functions:**
+  - `main()` - Command-line parsing and game launch
+  - `guardarResolucionOriginal()` - Save display configuration
+  - `restaurarResolucionOriginal()` - Restore display on exit
+  - `xrandr_disponible()` - Check for xrandr utility
+  - `setup()` - Initialize display detection
+  - `help()` - Display usage information
+  
+  **Location:** `src/main.c`
+  
+  See: [Command-line reference](/reference/command-line)
+</Accordion>
+
+<Accordion title="gfx.c">
+  **Purpose:** Graphics initialization and rendering
+  
+  Handles SDL surface management, screen updates, and video mode setup.
+</Accordion>
+
+<Accordion title="mov_fig.c">
+  **Purpose:** Player character movement
+  
+  Implements Pacman movement logic, collision detection, and animation.
+</Accordion>
+
+<Accordion title="movefant.c">
+  **Purpose:** Ghost AI and movement
+  
+  Contains artificial intelligence for ghost behavior and pathfinding.
+</Accordion>
+
+<Accordion title="misc.c (largest file)">
+  **Purpose:** Miscellaneous game utilities
+  
+  General-purpose functions used throughout the game.
+</Accordion>
+
+<Accordion title="sprites.c">
+  **Purpose:** Sprite loading and management
+  
+  Loads sprite graphics from BMP files and manages sprite rendering.
+</Accordion>
+
+<Accordion title="menuopt.c">
+  **Purpose:** Menu system
+  
+  Implements the game menu and option selection interface.
+</Accordion>
+
+</AccordionGroup>
+
+### Supporting files
+
+<ParamField path="memcpy32.asm" type="assembly">
+  Optimized x86 assembly implementation of memory copy operations for performance-critical rendering.
+  
+  **Size:** 228 bytes
+</ParamField>
+
+<ParamField path="*.original" type="backup">
+  Backup copies of modified source files for reference.
+</ParamField>
+
+## Header files
+
+```
+src/include/
+├── defines.h          # Global constants and macros (2685 bytes)
+├── gfx.h              # Graphics function prototypes
+├── pacman.h           # Main game structures (1585 bytes)
+├── sprites.h          # Sprite definitions (2724 bytes)
+├── menuopt.h          # Menu structures (2224 bytes)
+├── fantasmas.h        # Ghost definitions (1131 bytes)
+├── misc.h             # Utility prototypes (1224 bytes)
+├── mov_fig.h          # Movement prototypes
+├── intro.h            # Intro screen
+├── loadimage.h        # Image loading
+├── memcpy32.h         # Memory copy
+└── paleta.h           # Palette definitions
+```
+
+### Key headers
+
+<ParamField path="defines.h" type="header">
+  Central configuration file with:
+  - Screen resolution constants (`RES_XB`, `RES_YB`)
+  - Game speed and timing
+  - Tile dimensions
+  - Color definitions
+  - Platform-specific macros
+  
+  **Size:** 2,685 bytes (largest header)
+  
+  **Location:** `src/include/defines.h`
+</ParamField>
+
+<ParamField path="sprites.h" type="header">
+  Sprite system definitions:
+  - Sprite structure definitions
+  - Animation frame data
+  - Sprite coordinate constants
+  
+  **Size:** 2,724 bytes
+</ParamField>
+
+<ParamField path="pacman.h" type="header">
+  Core game structures:
+  - Player state
+  - Game board representation
+  - Score and lives
+  - Level data
+  
+  **Size:** 1,585 bytes
+</ParamField>
+
+<ParamField path="menuopt.h" type="header">
+  Menu system structures:
+  - Menu options
+  - UI elements
+  - Option flags
+  
+  **Size:** 2,224 bytes
+</ParamField>
+
+<ParamField path="fantasmas.h" type="header">
+  Ghost (enemy) definitions:
+  - Ghost types and colors
+  - AI behavior modes
+  - Ghost state structures
+  
+  **Size:** 1,131 bytes
+</ParamField>
+
+<ParamField path="misc.h" type="header">
+  Utility function prototypes:
+  - Timer functions
+  - Helper utilities
+  - Math operations
+  
+  **Size:** 1,224 bytes
+</ParamField>
+
+## Data directory
+
+```
+data/
+├── sprites.bmp        # Main sprite sheet (65KB)
+├── sprites.gif        # Sprite sheet GIF (11KB)
+├── sprites2.gif       # Additional sprites (8KB)
+├── fonts.bmp          # Font bitmap (192KB)
+├── fonts.gif          # Font GIF (3KB)
+├── tablero.bmp        # Game board texture (307KB)
+├── tablero2.bmp       # Alternate board (192KB)
+├── portada.bmp        # Title screen (192KB)
+├── *.wav              # Sound effects and music
+└── old/               # Archived assets
+```
+
+### Graphics assets
+
+<ParamField path="sprites.bmp" type="image">
+  Main sprite sheet containing:
+  - Pacman animations (all directions)
+  - Ghost sprites (4 colors)
+  - Fruit and bonus items
+  - UI elements
+  
+  **Format:** BMP
+  
+  **Size:** 65,038 bytes
+</ParamField>
+
+<ParamField path="fonts.bmp" type="image">
+  Bitmap font for text rendering.
+  
+  **Format:** BMP
+  
+  **Size:** 192,054 bytes (largest asset)
+</ParamField>
+
+<ParamField path="tablero.bmp" type="image">
+  Game board background texture.
+  
+  **Format:** BMP
+  
+  **Size:** 307,254 bytes (second largest)
+</ParamField>
+
+<ParamField path="portada.bmp" type="image">
+  Title screen / intro screen.
+  
+  **Format:** BMP
+  
+  **Size:** 192,054 bytes
+</ParamField>
+
+### Audio assets
+
+The `data/` directory contains numerous WAV files for game audio:
+
+<AccordionGroup>
+
+<Accordion title="Background music">
+  - `pacman.wav` (746KB) - Main theme music
+  - `pacman3.wav` (52KB) - Alternative music track
+  - `pacman4.wav` (40KB) - Additional music
+</Accordion>
+
+<Accordion title="Sound effects">
+  - `come.wav` - Eating pellets sound
+  - `startups.wav` (50KB) - Game start sound
+  - `offline.wav` (91KB) - Game over sound
+  - `cfaccess.wav` - Menu/access sound
+</Accordion>
+
+<Accordion title="Siren sounds">
+  Ghost chase music with increasing tempo:
+  - `siren1.wav` (70KB)
+  - `siren2.wav` (65KB)
+  - `siren3.wav` (55KB)
+  - `siren4.wav` (50KB)
+  - `siren5.wav` (45KB)
+</Accordion>
+
+<Accordion title="Other audio">
+  - `1b.wav` (154KB) - Additional sound effect
+  - `fondo.wav` - Background ambient sound
+  - `pacman2.wav` - Short jingle
+</Accordion>
+
+</AccordionGroup>
+
+<Note>
+  All audio files are in WAV format and played using libmikmod. Total audio data: approximately 1.5 MB.
+</Note>
+
+### Old assets directory
+
+<ParamField path="old/" type="directory">
+  Archive of previous versions of graphics and audio files, including:
+  - Older sprite versions
+  - Previous font files
+  - Original audio recordings
+  - `PassThroughMovie.zip` - Video content archive
+  
+  **Purpose:** Version history and backup
+</ParamField>
+
+## Build artifacts
+
+These files are generated during compilation and excluded from version control:
+
+```
+*.o           # Object files (one per .c source)
+pacman        # Final executable
+```
+
+### Object files
+
+During compilation, each `.c` file produces a corresponding `.o` object file:
+
+- `src/main.o`
+- `src/gfx.o`
+- `src/menuopt.o`
+- `src/mov_fig.o`
+- `src/sprites.o`
+- `src/movefant.o`
+- `src/misc.o`
+
+These are linked together to create the final `pacman` executable.
+
+### Executable
+
+<ParamField path="pacman" type="binary">
+  Final game executable after successful compilation.
+  
+  **Type:** ELF 64-bit LSB executable
+  
+  **Platform:** Linux x86-64
+  
+  **Usage:** `./pacman -f` or `./pacman -w`
+  
+  See: [Command-line reference](/reference/command-line)
+</ParamField>
+
+## Temporary files
+
+### Runtime generated files
+
+<ParamField path="/tmp/restaurar_xrandr.sh" type="script">
+  **Generated at:** Game startup (fullscreen mode)
+  
+  **Purpose:** Restore display configuration on exit
+  
+  **Contains:**
+  - `xrandr` commands for each connected display
+  - Resolution and refresh rate settings
+  - Monitor position and layout
+  - Primary display designation
+  
+  **Permissions:** Executable (`chmod +x`)
+  
+  **Location:** `/tmp/` directory
+  
+  **Lifecycle:** Created at startup, executed at exit, persists until system reboot
+</ParamField>
+
+## Development files
+
+Editor and temporary files ignored by git:
+
+- `*~` - Backup files from Emacs, Vim, and other editors
+- `.*.swp` - Vim swap files
+- `*.o` - Compiled object files
+
+## Project statistics
+
+<Note>
+  Approximate line counts and file sizes:
+</Note>
+
+| Category | Files | Total Size | Notes |
+|----------|-------|------------|-------|
+| Source (.c) | 20+ | ~120 KB | Including main.c, gfx.c, etc. |
+| Headers (.h) | 13 | ~15 KB | All in src/include/ |
+| Graphics | 10+ | ~1.3 MB | BMP and GIF files |
+| Audio | 15+ | ~1.5 MB | WAV format |
+| Documentation | 1 | ~3 KB | README.md |
+
+**Total project size:** Approximately 3 MB (source + assets)
+
+## Navigation patterns
+
+### Finding specific functionality
+
+<CodeGroup>
+
+```bash Game initialization
+# See: src/main.c
+# Functions: main(), setup(), init_gfx()
+```
+
+```bash Graphics rendering
+# See: src/gfx.c, src/sprites.c
+# Headers: src/include/gfx.h, src/include/sprites.h
+```
+
+```bash Game logic
+# See: src/mov_fig.c (player), src/movefant.c (ghosts)
+# Headers: src/include/mov_fig.h, src/include/fantasmas.h
+```
+
+```bash UI and menus
+# See: src/menuopt.c, src/writef.c
+# Headers: src/include/menuopt.h
+```
+
+```bash Assets
+# Graphics: data/*.bmp, data/*.gif
+# Audio: data/*.wav
+```
+
+</CodeGroup>
+
+## See also
+
+- [Command-line reference](/reference/command-line) - Usage and options
+- [Dependencies reference](/reference/dependencies) - Required libraries

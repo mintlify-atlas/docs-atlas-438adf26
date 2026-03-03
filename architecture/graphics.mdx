@@ -1,0 +1,451 @@
+---
+title: SDL graphics system and sprite rendering
+description: Deep dive into SDL 1.2 initialization, sprite management, double-buffering, and rendering pipeline
+---
+
+## Graphics initialization
+
+The graphics subsystem is initialized in **src/gfx.c** with the `init_gfx()` function.
+
+### SDL setup
+
+From **src/gfx.c:19-39**:
+
+```c
+void init_gfx(void)
+{
+    /* Initialize SDL */
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0)
+    {
+        fprintf(stderr, "Couldn't initialize SDL: %s\n", SDL_GetError());
+        exit(1);
+    }
+    atexit(SDL_Quit);
+
+    /* Enter 320x200x256 mode 32 colores*/
+    screen = SDL_SetVideoMode(RES_X, RES_Y, DEPTH, sdl_flags);
+    if (screen == NULL)
+    {
+        fprintf(stderr, "Couldn't init video mode: %s\n", SDL_GetError());
+        exit(1);
+    }
+    SDL_WM_SetCaption("PACMAN", NULL);
+    /* Oculta el puntero del mouse */
+    SDL_ShowCursor(0);
+}
+```
+
+<Note>
+The comment mentions "256 mode" but the actual depth is 32-bit (DEPTH = 32 from defines.h:97). This provides true color rendering with 8 bits per RGBA channel.
+</Note>
+
+### Video mode parameters
+
+<Tabs>
+  <Tab title="Resolution">
+    **320x200 pixels**
+    
+    This classic resolution provides:
+    - Low memory footprint (256 KB for RGBA buffer)
+    - Fast rendering on legacy hardware
+    - Authentic retro aesthetic
+    - 16:10 aspect ratio (scaled to modern displays)
+  </Tab>
+  <Tab title="Color depth">
+    **32-bit RGBA**
+    
+    Defined as `UintDEP` (Uint32):
+    ```c
+    typedef Uint32 UintDEP;
+    #define BPP sizeof(UintDEP)  // 4 bytes per pixel
+    ```
+    
+    This allows for:
+    - Full color sprites with alpha channel
+    - Direct pixel manipulation without palette lookups
+    - Easy memcpy operations for sprite blitting
+  </Tab>
+  <Tab title="SDL flags">
+    Set in **main.c:164** based on command-line args:
+    
+    **Windowed mode (`-w`):**
+    ```c
+    SDL_SWSURFACE | SDL_HWPALETTE | SDL_DOUBLEBUF
+    ```
+    
+    **Fullscreen mode (`-f`):**
+    ```c
+    SDL_SWSURFACE | SDL_HWPALETTE | SDL_DOUBLEBUF | SDL_FULLSCREEN
+    ```
+  </Tab>
+</Tabs>
+
+## Double-buffering system
+
+The game uses a manual double-buffering approach with multiple surfaces:
+
+### Buffer hierarchy
+
+1. **background** (main.c:22) - Primary rendering target
+   ```c
+   UintDEP background[RES_XB * RES_YB * BPP];
+   ```
+   All game rendering happens here first.
+
+2. **tablero** (SDL_Surface) - Static background with maze
+   Loaded from `data/tablero.bmp` in misc.c:500
+
+3. **screen** (SDL_Surface) - SDL display surface
+   The actual window/screen managed by SDL
+
+### Rendering pipeline
+
+From **misc.c:897-909** (game loop):
+
+```c
+// Copy background buffer to screen pixels
+memcpy(screen->pixels, vaddr, BYTES3);
+
+WaitFrame(); /* clave para la correcta ejecucion del timer */
+
+// Reset background to clean maze for next frame
+memcpy(vaddr, tablero->pixels, RES_X*RES_Y*BPP);
+
+if (SDL_MUSTLOCK(screen))
+{
+    SDL_UnlockSurface(screen);
+}
+
+SDL_Flip(screen);
+```
+
+<Accordion title="Why this approach?">
+  This pattern provides:
+  1. Clean slate each frame (copy from tablero)
+  2. All sprites drawn to background buffer
+  3. Single memcpy to screen buffer
+  4. SDL_Flip for vsync and presentation
+  
+  This avoids complex dirty rectangle tracking and ensures flicker-free rendering.
+</Accordion>
+
+## Sprite loading
+
+### Sprite sheet structure
+
+All sprites are loaded from **data/sprites.bmp** via the `getsprites()` function in **misc.c:245-260**:
+
+```c
+void getsprites(void)
+{
+  SDL_Surface *sprites;
+  SDL_Rect rect;
+  int i, irect;
+  sprites = LoadImage("data/sprites.bmp", 0);
+  for (i = 0, irect = 0; i < MAX_RECT; i += 4)
+    {
+      rect.x = sprites_rects[i];  
+      rect.y = sprites_rects[i+1];  
+      rect.w = sprites_rects[i+2];
+      rect.h = sprites_rects[i+3];      
+      getsprite(sprites, &rect, *(ptrs+irect++));
+    }
+}
+```
+
+### Sprite coordinates
+
+Sprite rectangles are defined in **misc.c:49-122** as a flat array:
+
+```c
+int sprites_rects[MAX_RECT] = 
+{
+    /* Pc-Man */
+    55, 145, 15, 15,  // Bola (full circle)
+    22, 184, 14, 15,  // pc_der (right)
+    38, 162, 11, 15,  // pc_der2 (right, mouth closing)
+    56, 185, 14, 15,  // pc_izq (left)
+    4, 162, 11, 15,   // pc_izq2 (left, mouth closing)
+    // ... more sprites
+};
+```
+
+Each sprite needs 4 values: x, y, width, height.
+
+### Sprite extraction
+
+The `getsprite()` function (gfx.c:228-250) extracts pixel data from the sprite sheet:
+
+```c
+void getsprite(SDL_Surface *srf, SDL_Rect *rect, UintDEP *dest)
+{
+    Uint8 *pixels = (Uint8 *)srf->pixels;
+    int bytes_per_pixel = srf->format->BytesPerPixel;
+    int pitch = srf->pitch;
+    UintDEP *ptrdest = dest;
+
+    if (SDL_LockSurface(srf) == 0)
+    {
+        for (int y = 0; y < rect->h; y++) {
+            for (int x = 0; x < rect->w; x++) {
+                // Posición en el buffer original
+                Uint8 *p = pixels + (rect->y + y) * pitch + (rect->x + x) * bytes_per_pixel;
+
+                // Leer pixel según formato
+                UintDEP pixel;
+                memcpy(&pixel, p, sizeof(UintDEP));
+                *(ptrdest++) = pixel;
+            }
+        }
+        SDL_UnlockSurface(srf);
+    }
+}
+```
+
+<Note>
+This function was rewritten (see comment at gfx.c:227 "Creado por chatGPT") to handle proper byte alignment and pitch, fixing issues with the original version.
+</Note>
+
+## Sprite rendering
+
+### The putico function
+
+The core rendering primitive is `putico()` in **src/gfx.c:142-152**:
+
+```c
+void putico(int x, int y, UintDEP *source, UintDEP *dest, int tx, int ty)
+{
+    UintDEP *src_line = source;
+    UintDEP *dst_line = dest + y * 320 + x;
+
+    for (int sy = 0; sy < ty; sy++) {
+        memcpy(dst_line, src_line, tx * sizeof(UintDEP));
+        src_line += tx;
+        dst_line += 320;
+    }
+}
+```
+
+<ParamField path="x" type="int">
+  Destination X coordinate in pixels
+</ParamField>
+
+<ParamField path="y" type="int">
+  Destination Y coordinate in pixels
+</ParamField>
+
+<ParamField path="source" type="UintDEP*">
+  Pointer to sprite pixel data
+</ParamField>
+
+<ParamField path="dest" type="UintDEP*">
+  Destination buffer (usually `background`)
+</ParamField>
+
+<ParamField path="tx" type="int">
+  Sprite width in pixels
+</ParamField>
+
+<ParamField path="ty" type="int">
+  Sprite height in pixels
+</ParamField>
+
+### Performance optimization
+
+The optimized version (lines 142-152) replaced a pixel-by-pixel loop with line-based memcpy:
+
+```c
+// Old version (commented out at gfx.c:133-140)
+for (sy = 0; sy < ty; sy++)
+    for (sx = 0; sx < tx; sx++)
+        dest[(sx + x) + (sy + y) * 320] = source[sx + sy * tx];
+
+// New version - ~10x faster
+for (int sy = 0; sy < ty; sy++) {
+    memcpy(dst_line, src_line, tx * sizeof(UintDEP));
+    src_line += tx;
+    dst_line += 320;
+}
+```
+
+## Animated sprites
+
+### Pacman animation
+
+Pacman has 4 directions, each with 3 animation frames. From **mov_fig.c:88-115**:
+
+<Tabs>
+  <Tab title="Right movement">
+    ```c
+    if (pc->inc_x == 1) {
+      jp += inc_velocidad_pc;
+      if      (CntStep3 == 0) putico(old_xp + jp, old_yp, pc_der,  vaddr, 14, 15);
+      else if (CntStep3 == 1) putico(old_xp + jp, old_yp, pc_der2, vaddr, 11, 15);
+      else { putico(old_xp + jp, old_yp, bola, vaddr, 15, 15); CntStep3 = 0; }
+      if (jp == ESCALA) { busca_posiciones_pc = TRUE; p = 0; }
+    }
+    ```
+    
+    Animation sequence:
+    1. `pc_der` - Mouth open
+    2. `pc_der2` - Mouth closing
+    3. `bola` - Fully closed (circle)
+  </Tab>
+  <Tab title="Left movement">
+    ```c
+    else if (pc->inc_x == -1) {
+      jp -= inc_velocidad_pc;
+      if      (CntStep3 == 0) putico(old_xp + jp, old_yp, pc_izq,  vaddr, 14, 15);
+      else if (CntStep3 == 1) putico((old_xp + jp)+3, old_yp, pc_izq2, vaddr, 11, 15);
+      else { putico(old_xp + jp, old_yp, bola, vaddr, 15, 15); CntStep3 = 0; }
+    }
+    ```
+  </Tab>
+  <Tab title="Up/Down">
+    Similar patterns for Y-axis movement using `pc_arr`, `pc_arr2`, `pc_aba`, `pc_aba2` sprites.
+  </Tab>
+</Tabs>
+
+### Ghost animation
+
+Ghosts have simpler 2-frame animations. From **mov_fig.c:169-176**:
+
+```c
+const int frame = (CntStep % 2 == 0) ? 0 : 1;
+if (fan->estado_fantasma[who] == NORMAL) {
+    draw_ghost_normal(who, xf + j[who], yf + i[who], 
+                     (fan->inc_x[who] > 0) - (fan->inc_x[who] < 0), 
+                     (fan->inc_y[who] > 0) - (fan->inc_y[who] < 0), 
+                     frame, vaddr);
+}
+```
+
+The `draw_ghost_normal()` helper (mov_fig.c:35-41) selects sprites from the GHOST_SPRITES table:
+
+```c
+static const DirSprites GHOST_SPRITES[4] = {
+    // who == 0 (azul/blue)
+    { { azu1der, azu2der }, { azu1izq, azu2izq }, 
+      { azu1aba, azu2aba }, { azu1arr, azu2arr } },
+    // who == 1 (rojo/red)
+    { { rojo1der, rojo2der }, { rojo1izq, rojo2izq }, 
+      { rojo1aba, rojo2aba }, { rojo1arr, rojo2arr } },
+    // ... yellow and gray ghosts
+};
+```
+
+## Text rendering
+
+Number rendering uses sprite-based digits. The `writef()` function in **misc.c:186-242** converts numbers to sprites:
+
+```c
+void writef(int col, int row, UintDEP *where, char *format, ...)
+{
+  va_list arg_ptr;
+  char output[81];
+  // ... vsprintf formatting
+  
+  for (i = itemp; i >= 0; i--) {
+    switch(output[i]) {
+    case '0':
+      putico(col, row, n_0, where, 4, 7);
+      break;
+    case '1':
+      putico(col, row, n_1, where, 4, 7);
+      break;
+    // ... cases 2-9
+    }
+    col -= 5;
+  }
+}
+```
+
+Number sprites (n_0 through n_9) are defined as raw pixel arrays in **sprites.c:44-93**.
+
+## Frame timing
+
+### WaitFrame function
+
+From **gfx.c:97-109**:
+
+```c
+void WaitFrame(void)
+{
+    static Uint32 next_tick = 0;
+    Uint32 this_tick;
+
+    /* Wait for the next frame */
+    this_tick = SDL_GetTicks();
+    if (this_tick < next_tick)
+    {
+        SDL_Delay(next_tick - this_tick);
+    }
+    next_tick = this_tick + (1000 / FRAMES_PER_SEC);
+}
+```
+
+This ensures consistent 50 FPS rendering (FRAMES_PER_SEC = 50 from gfx.h:2).
+
+### Timer system
+
+The game uses POSIX interval timers for logic updates. From **gfx.c:155-178**:
+
+```c
+void TimerStart(void (*handler)(int), int frecuencia)
+{
+    struct itimerval newtimer;
+    struct sigaction action;
+    
+    newtimer.it_interval.tv_usec = 1000000.0f / (float)frecuencia;
+    newtimer.it_value.tv_usec = 1000000.0f / (float)frecuencia;
+    
+    setitimer(ITIMER_REAL, &newtimer, &oldtimer);
+    
+    action.sa_handler = handler;
+    action.sa_flags = SA_RESTART;
+    sigaction(SIGALRM, &action, &oldaction);
+}
+```
+
+The `timerfunc()` handler (gfx.c:188-193) increments frame counters:
+
+```c
+void timerfunc(int i)
+{
+    CntStep++;
+    CntStep2++;
+    CntStep3++;
+}
+```
+
+These counters drive animation and game logic timing throughout the codebase.
+
+## Image loading
+
+The `LoadImage()` helper (gfx.c:111-129) uses SDL_image:
+
+```c
+SDL_Surface *LoadImage(char *datafile, int transparent)
+{
+    SDL_Surface *image, *surface;
+
+    image = IMG_Load(datafile);
+    if (image == NULL)
+    {
+        fprintf(stderr, "Couldn't load image %s: %s\n", datafile, IMG_GetError());
+        return (NULL);
+    }
+    if (transparent)
+    {
+        SDL_SetColorKey(image, (SDL_SRCCOLORKEY | SDL_RLEACCEL), 
+                       *(Uint8 *)image->pixels);
+    }
+    surface = SDL_DisplayFormat(image);
+    SDL_FreeSurface(image);
+    return (surface);
+}
+```
+
+<Note>
+The transparent parameter enables color-key transparency using the top-left pixel color. This isn't used for the main sprite sheet but could be used for overlays.
+</Note>

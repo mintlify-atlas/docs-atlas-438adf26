@@ -1,0 +1,566 @@
+---
+title: Game logic and mechanics
+description: Core game state management, ghost AI algorithms, collision detection, scoring system, and level progression
+---
+
+## Game state management
+
+The game state is managed through two primary structures and a maze array.
+
+### State structures
+
+<Tabs>
+  <Tab title="Pacman state">
+    From **src/include/misc.h:1-18**:
+    
+    ```c
+    struct pcman {
+      float x, y;              // Grid position (not pixels)
+      float inc_x, inc_y;      // Current direction (-1, 0, 1)
+      float old_inc_x, old_inc_y; // Previous direction
+      float old_x, old_y;      // Previous position
+      float yf, dir;           // Calculation helpers
+      int puntos;              // Dots remaining
+      int puntuacion;          // Score
+      int nivel;               // Level 0-13
+      int tiempo;              // Power-up duration
+      int estado_pcman;        // NORMAL or ENFADADO
+      int num_vidas;           // Lives remaining
+    };
+    ```
+  </Tab>
+  <Tab title="Ghost state">
+    From **src/include/misc.h:20-35**:
+    
+    ```c
+    struct fantasmas {
+      float x[4], y[4];           // Position for each ghost
+      float old_x[4], old_y[4];   // Previous positions
+      float inc_x[4], inc_y[4];   // Movement increments
+      float find_x[4], find_y[4]; // Current target
+      float find_xp[4], find_yp[4]; // Predicted target (blue ghost)
+      float old_mov_x[4], old_mov_y[4]; // Last movement
+      int estado_fantasma[4];     // NORMAL, ENFADADO, or MUERTO
+      int who;                    // Current ghost index (0-3)
+    };
+    ```
+  </Tab>
+  <Tab title="Maze array">
+    From **src/misc.c:18-45**, the maze is a static 32x26 array:
+    
+    ```c
+    int c_array[MAXY_A*MAXX_A]; // Working copy
+    int array[MAXY_A*MAXX_A] = {
+      // 0 = wall
+      // C (1) = circuit with dot
+      // N (2) = nothing (walkable, no dot)
+      // J (3) = walked path
+      // P (4) = door (ghost house)
+      // B (5) = power pellet
+    };
+    ```
+  </Tab>
+</Tabs>
+
+### Game states
+
+Defined in **src/include/defines.h:3-5**:
+
+```c
+#define NORMAL 0     // Normal gameplay
+#define ENFADADO 1   // Scared/edible (ghosts) or powered-up (Pacman)
+#define MUERTO 2     // Dead (ghosts returning to base)
+```
+
+## Initialization
+
+The `inicializa_structuras()` function in **src/misc.c:280-477** sets up game state.
+
+### Pacman initialization
+
+From **misc.c:282-298**:
+
+```c
+void inicializa_structuras(struct pcman *pc, struct fantasmas *fan, int value)
+{
+  pc->x = 7;
+  pc->y = 11;
+  pc->old_x = 7;
+  pc->old_y = 11;
+  pc->inc_x = 0;
+  pc->inc_y = -1;  // Start moving up
+  pc->old_inc_x = 0;
+  pc->old_inc_y = 0;
+  pc->estado_pcman = NORMAL;
+  if (value == TRUE || value == COMENZAR) {
+    pc->puntos = NUM_PUNTOS;  // 226 dots
+  }
+  if (value == COMENZAR) {
+    pc->nivel = 0;
+    pc->num_vidas = 2;
+    pc->puntuacion = 0;
+  }
+}
+```
+
+### Ghost initialization
+
+Each ghost starts at a different position in the "ghost house" (center of maze):
+
+<Accordion title="Blue ghost (index 0)">
+  From **misc.c:300-308**:
+  ```c
+  fan->who = 0;
+  fan->x[fan->who] = 17;
+  fan->y[fan->who] = 11;
+  fan->inc_x[fan->who] = 1;  // Moving right
+  fan->inc_y[fan->who] = 0;
+  fan->old_mov_x[fan->who] = 1;
+  fan->old_mov_y[fan->who] = 0;
+  fan->find_x[fan->who] = pc->x;
+  fan->find_y[fan->who] = pc->y;
+  ```
+</Accordion>
+
+<Accordion title="Red ghost (index 1)">
+  From **misc.c:310-318**:
+  ```c
+  fan->who = 1;
+  fan->x[fan->who] = 19;
+  fan->y[fan->who] = 12;
+  fan->inc_x[fan->who] = 0;
+  fan->inc_y[fan->who] = 1;  // Moving down
+  // ... same pattern
+  ```
+</Accordion>
+
+<Accordion title="Yellow ghost (index 2) and Gray ghost (index 3)">
+  Similar initialization at positions (15, 11) and (16, 14) respectively.
+</Accordion>
+
+### Velocity initialization
+
+From **misc.c:345-451**, velocity is set based on level:
+
+```c
+switch(pc->nivel) {
+case 0:
+  pc->tiempo = 273;  // Power-up duration (15 seconds * 18.2 Hz)
+  inc_velocidad[0] = velocidades[pc->nivel];  // 0.4
+  inc_velocidad[1] = velocidades[pc->nivel];
+  inc_velocidad[2] = velocidades[pc->nivel];
+  inc_velocidad[3] = velocidades[pc->nivel];
+  break;
+case 1:
+  pc->tiempo = 198;  // 11 seconds
+  inc_velocidad[0] = velocidades[1];  // 0.4231
+  // ...
+}
+```
+
+Velocity array from **misc.c:140-155**:
+
+```c
+float velocidades[14] = {
+  0.4,     // Level 0
+  0.4231,  // Level 1
+  0.4462,  // Level 2
+  // ... increases up to
+  0.7      // Level 13
+};
+```
+
+## Ghost AI system
+
+The ghost AI is split between two files:
+
+### Target selection
+
+From **src/misc.c:760-836**, each ghost has unique behavior:
+
+<Tabs>
+  <Tab title="Blue ghost (who=0)">
+    **Ambush behavior** - Tries to predict Pacman's position
+    
+    From **misc.c:760-780**:
+    ```c
+    if (fan.estado_fantasma[0] == NORMAL) {
+      if (fan.x[0] == fan.find_xp[0] && fan.y[0] == fan.find_yp[0])
+      {
+        fan.find_xp[0] = pc.x;
+        fan.find_yp[0] = pc.y;
+        
+        fan.find_x[0] = fan.find_xp[0];
+        fan.find_y[0] = fan.find_yp[0];
+      }
+    } else if (fan.estado_fantasma[0] == ENFADADO) {
+      // Random target when scared
+      alea[0] = rand() % MAXX_A;
+      alea[1] = rand() % MAXY_A;
+      fan.find_x[0] = alea[0];
+      fan.find_y[0] = alea[1];
+    } else {
+      // Return to ghost house when dead
+      fan.find_x[0] = 16;
+      fan.find_y[0] = 12;
+    }
+    ```
+  </Tab>
+  <Tab title="Red ghost (who=1)">
+    **Direct chase** - Always targets Pacman's current position
+    
+    From **misc.c:782-793**:
+    ```c
+    if (fan.estado_fantasma[1] == NORMAL) {
+      fan.find_x[1] = pc.x;
+      fan.find_y[1] = pc.y;
+    } else if (fan.estado_fantasma[1] == ENFADADO) {
+      alea[0] = rand() % MAXX_A;
+      alea[1] = rand() % MAXY_A;
+      fan.find_x[1] = alea[0];
+      fan.find_y[1] = alea[1];
+    } else {
+      fan.find_x[1] = 16;
+      fan.find_y[1] = 12;
+    }
+    ```
+  </Tab>
+  <Tab title="Yellow ghost (who=2)">
+    **Proximity-based** - Chases only when within 9 cells
+    
+    From **misc.c:795-814**:
+    ```c
+    if (fan.estado_fantasma[2] == NORMAL) {
+      if (fabs(pc.x - fan.x[2]) < 9 && fabs(pc.y - fan.y[2]) < 9)
+      {
+        fan.find_x[2] = pc.x;
+        fan.find_y[2] = pc.y;
+      } else {
+        // Random patrol when far away
+        fan.find_x[2] = rand()%MAXX_A;
+        fan.find_y[2] = rand()%MAXY_A;
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="Gray ghost (who=3)">
+    **Patrol behavior** - Chases within 12 cells, otherwise random
+    
+    From **misc.c:816-836**:
+    ```c
+    if (fan.estado_fantasma[3] == NORMAL) {
+      if (fabs(pc.x - fan.x[3]) < 12 && fabs(pc.y - fan.y[3]) < 12)
+      {
+        fan.find_x[3] = pc.x;
+        fan.find_y[3] = pc.y;
+      } else {
+        fan.find_x[3] = rand()%MAXX_A;
+        fan.find_y[3] = rand()%MAXY_A;
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Pathfinding algorithm
+
+The `optener_movimientos_fantasmas()` function in **src/movefant.c:279-526** implements the core pathfinding.
+
+#### Movement decision logic
+
+From **movefant.c:282-356**, the algorithm considers:
+
+1. **Previous movement direction** - Stored in `fan->old_mov_x` and `fan->old_mov_y`
+2. **Target position** - From `fan->find_x` and `fan->find_y`
+3. **Walkable cells** - Checked via `truex()` and `truey()` helpers
+
+Core logic for Y-axis movement (movefant.c:287-356):
+
+```c
+if (fan->old_mov_y[fan->who] != 0)
+{
+  if (fan->x[fan->who] > fan->find_x[fan->who])
+  {
+    if (comprueba_distancias_x(fan))
+    {
+      if (truex(-1, fan))  // Can move left?
+      {
+        fan->inc_x[fan->who] = -1;
+        fan->inc_y[fan->who] = 0;
+      }
+    }
+    else
+      devuelve_valores_aleatorios_y(fan);
+  }
+  else if (fan->x[fan->who] < fan->find_x[fan->who])
+  {
+    if (comprueba_distancias_x(fan))
+    {
+      if (truex(1, fan))  // Can move right?
+      {
+        fan->inc_x[fan->who] = 1;
+        fan->inc_y[fan->who] = 0;
+      }
+    }
+    else
+      devuelve_valores_aleatorios_y(fan);
+  }
+}
+```
+
+#### Wall collision helpers
+
+From **movefant.c:29-41**:
+
+```c
+int truex(int value, struct fantasmas *fan)
+{
+  if (value == -1 &&
+      c_array[(int)((fan->y[fan->who] * 32) + (fan->x[fan->who] + value))] == P)
+    return 0;  // Door blocks ghosts moving left
+  else
+    return (c_array[(int)((fan->y[fan->who] * 32) + 
+                         (fan->x[fan->who] + value))]);
+}
+
+int truey(int value, struct fantasmas *fan)
+{
+  return (c_array[(int)(((fan->y[fan->who] + value) * 32) + 
+                        fan->x[fan->who])]);
+}
+```
+
+Returns non-zero if the cell is walkable (C, N, J, B, or P for ghosts moving right).
+
+#### Randomization
+
+When ghosts hit a junction or dead end, `devuelve_valores_aleatorios_x()` and `devuelve_valores_aleatorios_y()` (movefant.c:121-277) add unpredictability:
+
+```c
+void devuelve_valores_aleatorios_y(struct fantasmas *fan)
+{
+  int alea_t;
+  fan->inc_y[fan->who] = 0;
+  fan->inc_x[fan->who] = 0;
+
+  if (truex(-1, fan) && truex(1, fan) && truey(fan->old_mov_y[fan->who], fan))
+  {
+    alea_t = rand() % 30;
+    if (alea_t >= 0 && alea_t <= 9)
+      fan->inc_x[fan->who] = 1;
+    else if (alea_t >= 10 && alea_t <= 19)
+      fan->inc_x[fan->who] = -1;
+    else if (alea_t >= 20 && alea_t <= 29)
+      fan->inc_y[fan->who] = fan->old_mov_y[fan->who];
+  }
+  // ... more cases
+}
+```
+
+This creates a 33% chance for each direction when multiple paths are available.
+
+## Collision detection
+
+From **src/mov_fig.c:190-210**, collision uses distance-based detection:
+
+```c
+if (fabs((xf + j[who]) - (old_xp + jp + 1)) < 10 && 
+    fabs((yf + i[who]) - (old_yp + ip)) < 10) {
+  if (fan->estado_fantasma[who] == NORMAL) {
+    // Pacman dies
+    pc->num_vidas--;
+    if (pc->num_vidas < 0)
+      menu_opciones(FALSE);
+    inicializa_structuras(pc, fan, FALSE);
+    CntStep2 = 0;
+  } else if (fan->estado_fantasma[who] == ENFADADO) {
+    // Eat ghost
+    switch (control_puntos_fan_muerto) {
+      case 0: writef(xf, yf, vaddr, "%2d", 50 ); pc->puntuacion += 50;  break;
+      case 1: writef(xf, yf, vaddr, "%3d", 100); pc->puntuacion += 100; break;
+      case 2: writef(xf, yf, vaddr, "%3d", 150); pc->puntuacion += 150; break;
+      case 3: writef(xf, yf, vaddr, "%3d", 200); pc->puntuacion += 200; break;
+    }
+    fan->estado_fantasma[who] = MUERTO;
+    control_puntos_fan_muerto++;
+  }
+}
+```
+
+<Note>
+The collision radius is 10 pixels (roughly the size of the sprites). The `control_puntos_fan_muerto` variable tracks how many ghosts have been eaten in sequence for progressive scoring.
+</Note>
+
+## Scoring system
+
+### Dot collection
+
+From **misc.c:714-730**:
+
+```c
+if (c_array [(int)(pc.x + (pc.y * 32))] == C) {
+  c_array[(int)(pc.x + (pc.y * 32))] = J;  // Mark as walked
+  xp = COOR_X + (pc.x * 8) - 6;
+  yp = COOR_Y + (pc.y * 8) - 8;
+  putico(xp + 6, yp + 4, punto_negro, tablero->pixels, 4, 4);  // Erase dot
+  pc.puntos--;
+  pc.puntuacion+=10;
+  if (pc.puntos == 0) {
+    adelanta_nivel(&fan, &pc);
+  }
+}
+```
+
+**10 points** per dot.
+
+### Power pellet
+
+From **misc.c:663-675**:
+
+```c
+if (c_array [(int)(pc.x + (pc.y * 32))] == B) {
+  c_array[(int)(pc.x + (pc.y * 32))] = J;
+  xp = COOR_X + (pc.x * 8) - 6;
+  yp = COOR_Y + (pc.y * 8) - 9;
+  putico(xp + 3, yp + 2, bak_asusta, tablero->pixels, 10, 10);
+  pc.estado_pcman = ENFADADO;
+  if (fan.estado_fantasma[0] == NORMAL) fan.estado_fantasma[0] = ENFADADO;
+  if (fan.estado_fantasma[1] == NORMAL) fan.estado_fantasma[1] = ENFADADO;
+  if (fan.estado_fantasma[2] == NORMAL) fan.estado_fantasma[2] = ENFADADO;
+  if (fan.estado_fantasma[3] == NORMAL) fan.estado_fantasma[3] = ENFADADO;
+  pc.puntuacion+=50;
+  CntStep = 0;
+}
+```
+
+**50 points** per power pellet.
+
+### Ghost consumption
+
+**Progressive scoring** for eating multiple ghosts in one power-up:
+- 1st ghost: 50 points
+- 2nd ghost: 100 points
+- 3rd ghost: 150 points
+- 4th ghost: 200 points
+
+## Level progression
+
+The `adelanta_nivel()` function in **misc.c:485-489** handles level advancement:
+
+```c
+void adelanta_nivel(struct fantasmas *fan, struct pcman *pc)
+{
+  pc->nivel++;
+  stargame(fan, pc, TRUE);
+}
+```
+
+This is called when `pc.puntos == 0` (all dots collected).
+
+### Level differences
+
+<Tabs>
+  <Tab title="Ghost speed">
+    From **misc.c:140-155**, ghost speed increases from 0.4 (level 0) to 0.7 (level 13+):
+    
+    ```c
+    float velocidades[14] = {
+      0.4, 0.4231, 0.4462, 0.4692, 0.4923, 0.5154, 0.5385,
+      0.5615, 0.5846, 0.6077, 0.6308, 0.6538, 0.6769, 0.7
+    };
+    ```
+    
+    Pacman's speed remains constant at 0.5 (misc.c:173).
+  </Tab>
+  <Tab title="Power-up duration">
+    From **misc.c:345-451**, power-up time decreases:
+    
+    - Level 0: 273 ticks (15 seconds)
+    - Level 1: 198 ticks (11 seconds)
+    - Level 2: 162 ticks (9 seconds)
+    - Level 3: 126 ticks (7 seconds)
+    - Level 4+: 90 ticks (5 seconds)
+    - Level 13: 20 ticks (1 second)
+    
+    Calculated as `seconds * 18.2` (timer frequency).
+  </Tab>
+</Tabs>
+
+### Maze reset
+
+From **misc.c:491-503**:
+
+```c
+void stargame(struct fantasmas *fan, struct pcman *pc, int value)
+{
+  if (value == TRUE || value == COMENZAR)
+    copyarray();  // Reset maze from original template
+
+  inicializa_structuras(pc, fan, value);
+  tablero = LoadImage("data/tablero.bmp", 0);
+  CntStep2 = 0;
+  teclado();
+}
+```
+
+The `copyarray()` function (misc.c:262-267) resets the working maze:
+
+```c
+void copyarray(void)
+{
+  int j;
+  for (j = 0; j < MAXX_A * MAXY_A; j++)
+    c_array[j] = array[j];
+}
+```
+
+## Tunnel wrapping
+
+The maze has wraparound tunnels on the sides. From **movefant.c:451-464**:
+
+```c
+if (fan->x[fan->who] == 16 && fan->y[fan->who] == 1)
+{
+  fan->x[fan->who] = 16;
+  fan->y[fan->who] = 24;
+  fan->inc_y[fan->who] = -1;
+  fan->inc_x[fan->who] = 0;
+}
+else if (fan->x[fan->who] == 16 && fan->y[fan->who] == 24)
+{
+  fan->x[fan->who] = 16;
+  fan->y[fan->who] = 1;
+  fan->inc_y[fan->who] = 1;
+  fan->inc_x[fan->who] = 0;
+}
+```
+
+Similar logic exists for Pacman in **misc.c:651-660**.
+
+## Ghost house exit
+
+Ghosts leave the starting house at staggered intervals. From **misc.c:840-893**:
+
+```c
+if (busca_posiciones[0] == TRUE) {
+  if (fan.x[0] == 17 && fan.y[0] == 12 && fan.estado_fantasma[0] == NORMAL)  {
+    if (CntStep2 >= 50 && CntStep2 <= 100) {
+      fan.find_x[0] = fan.find_xp[0] = pc.x;
+      fan.find_y[0] = fan.find_yp[0] = pc.y;
+      fan.inc_x[0] = 1;
+      fan.inc_y[0] = 0;
+    } else {
+      fan.find_x[0] = 15;
+      fan.find_y[0] = 12;
+    }
+  }
+}
+```
+
+Exit times:
+- Blue ghost: CntStep2 50-100
+- Red ghost: CntStep2 100-150
+- Yellow ghost: CntStep2 150-200
+- Gray ghost: CntStep2 200-240
+
+This prevents all ghosts from exiting simultaneously at game start.

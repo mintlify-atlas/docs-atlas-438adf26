@@ -1,0 +1,435 @@
+---
+title: Running the game
+description: Learn how to launch Pacman with different display modes, understand resolution management, and configure multi-monitor setups
+---
+
+This guide explains how to run the Pacman game with various command-line options and display configurations.
+
+## Basic usage
+
+The game requires you to specify either fullscreen or windowed mode when launching.
+
+### Command syntax
+
+```bash
+./pacman [OPTIONS]
+```
+
+### Available options
+
+| Option | Description | SDL Flags |
+|--------|-------------|----------|
+| `-f` | Fullscreen mode | `SDL_FULLSCREEN` |
+| `-w` | Windowed mode | Default (no fullscreen) |
+| `-h` | Display help | Shows usage information |
+
+## Display modes
+
+The game supports two primary display modes.
+
+<Tabs>
+  <Tab title="Windowed mode">
+    Launch the game in a window:
+    
+    ```bash
+    ./pacman -w
+    ```
+    
+    **Characteristics:**
+    - Runs in a 320x200 window
+    - Allows switching to other applications
+    - Maintains desktop resolution
+    - Best for testing and development
+    
+    **Use case:** Ideal when you want to play while keeping other windows accessible.
+  </Tab>
+  
+  <Tab title="Fullscreen mode">
+    Launch the game in fullscreen:
+    
+    ```bash
+    ./pacman -f
+    ```
+    
+    **Characteristics:**
+    - Takes over entire display
+    - Better performance
+    - Authentic retro gaming experience
+    - May change screen resolution
+    
+    **Use case:** Best for immersive gameplay and optimal performance.
+  </Tab>
+</Tabs>
+
+<Note>
+  You must specify either `-f` or `-w`. Running `./pacman` without options will display the help message and exit.
+</Note>
+
+## Resolution management
+
+The game includes sophisticated resolution management to preserve your display configuration.
+
+### How it works
+
+When the game starts, it automatically:
+
+<Steps>
+  <Step title="Detect primary monitor">
+    Uses GLFW to detect your primary monitor and current video mode:
+    
+    ```c
+    GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+    const GLFWvidmode *mode = glfwGetVideoMode(monitor);
+    ```
+    
+    Saves: width, height, and refresh rate
+  </Step>
+  
+  <Step title="Generate restoration script">
+    Creates `/tmp/restaurar_xrandr.sh` with commands to restore:
+    - Original resolution for each connected display
+    - Relative position between monitors
+    - Which display is the primary output
+  </Step>
+  
+  <Step title="Run the game">
+    The game runs with SDL 1.2 at 320x200 resolution
+  </Step>
+  
+  <Step title="Restore on exit">
+    Automatically executes the restoration script to return your display to its original state
+  </Step>
+</Steps>
+
+### Resolution restoration details
+
+The restoration script generated at startup contains commands like:
+
+```bash
+#!/bin/bash
+xrandr --output HDMI-1 --mode 1920x1080 --pos 0x0 --primary
+xrandr --output DP-1 --mode 2560x1440 --pos 1920x0
+```
+
+This ensures your exact multi-monitor layout is preserved.
+
+## Multi-monitor setup
+
+The game fully supports multi-monitor configurations.
+
+### Extended display mode
+
+If you have multiple monitors in extended mode:
+
+<Accordion title="How multi-monitor restoration works">
+  The game uses `xrandr` to query and save:
+  
+  1. **Each connected output** - All active displays (HDMI, DisplayPort, etc.)
+  2. **Resolution and position** - Mode (e.g., 1920x1080) and position (e.g., +1920+0)
+  3. **Primary display** - Which monitor is marked as primary
+  
+  The restoration script includes the `--pos` and `--primary` flags to restore the exact layout:
+  
+  ```bash
+  xrandr --output HDMI-1 --mode 1920x1080 --pos 0x0 --primary
+  xrandr --output DP-1 --mode 2560x1440 --pos 1920x0
+  ```
+  
+  This preserves your extended desktop across multiple displays.
+</Accordion>
+
+### Restoration timing
+
+<Warning>
+  Resolution restoration may take 1-2 seconds, especially with multiple monitors. This is normal behavior as xrandr reconfigures each display.
+</Warning>
+
+### Manual restoration
+
+If the automatic restoration fails, you can manually run:
+
+```bash
+/tmp/restaurar_xrandr.sh
+```
+
+To inspect the restoration commands before running:
+
+```bash
+cat /tmp/restaurar_xrandr.sh
+```
+
+## xrandr integration
+
+The game relies on xrandr for display management on X11 systems.
+
+### Checking xrandr availability
+
+When the game starts, it verifies xrandr is available:
+
+```c
+int xrandr_disponible()
+{
+  if (access("/usr/bin/xrandr", X_OK) == 0)
+    return 1;
+  return (system("which xrandr > /dev/null 2>&1") == 0);
+}
+```
+
+You'll see one of these messages:
+
+<Tabs>
+  <Tab title="xrandr available">
+    ```
+    ✅ xrandr disponible. Se podrá guardar/restaurar la configuración de pantalla.
+    Resolución guardada: 1920x1080 @60Hz
+    📝 Script de restauración generado con disposición y salida primaria en /tmp/restaurar_xrandr.sh
+    ```
+  </Tab>
+  
+  <Tab title="xrandr missing">
+    ```
+    ⚠️  ADVERTENCIA: 'xrandr' no está disponible en el sistema.
+    No se podrá guardar ni restaurar la resolución automáticamente.
+    ```
+  </Tab>
+</Tabs>
+
+### Installing xrandr
+
+If xrandr is not available:
+
+```bash
+# Debian/Ubuntu
+sudo apt install x11-utils
+
+# Fedora/RHEL
+sudo dnf install xorg-x11-utils
+
+# Arch Linux
+sudo pacman -S xorg-xrandr
+```
+
+## Running examples
+
+Common scenarios for launching the game.
+
+### Single monitor setup
+
+For a typical single monitor configuration:
+
+```bash
+# Windowed mode - safe and convenient
+./pacman -w
+
+# Fullscreen mode - immersive experience
+./pacman -f
+```
+
+### Dual monitor extended desktop
+
+With monitors arranged side-by-side (e.g., 1920x1080 + 1920x1080):
+
+```bash
+# Run in fullscreen on primary monitor
+./pacman -f
+
+# Your layout will be automatically restored on exit:
+# Monitor 1 (primary): 1920x1080 at position 0x0
+# Monitor 2: 1920x1080 at position 1920x0
+```
+
+### Different resolution monitors
+
+With mixed resolutions (e.g., 2560x1440 primary + 1920x1080 secondary):
+
+```bash
+./pacman -f
+
+# Both monitors will restore to their original resolutions and positions
+```
+
+### High refresh rate displays
+
+For monitors with high refresh rates (e.g., 144Hz, 240Hz):
+
+```bash
+./pacman -f
+
+# Example saved configuration:
+# Resolución guardada: 2560x1440 @144Hz
+# Refresh rate will be restored along with resolution
+```
+
+## Display configuration
+
+Understanding the SDL configuration used by the game.
+
+### SDL flags
+
+The game configures SDL with these flags:
+
+```c
+// Windowed mode (-w)
+sdl_flags = (SDL_SWSURFACE | SDL_HWPALETTE | SDL_DOUBLEBUF);
+
+// Fullscreen mode (-f)
+sdl_flags = (SDL_SWSURFACE | SDL_HWPALETTE | SDL_DOUBLEBUF | SDL_FULLSCREEN);
+```
+
+<Accordion title="Understanding SDL flags">
+  - **SDL_SWSURFACE** - Use software rendering surface
+  - **SDL_HWPALETTE** - Use hardware palette (for indexed color)
+  - **SDL_DOUBLEBUF** - Enable double buffering to prevent tearing
+  - **SDL_FULLSCREEN** - Set fullscreen video mode (with `-f` only)
+</Accordion>
+
+### Game resolution
+
+The game renders at a fixed resolution:
+
+```c
+#define RES_X 320
+#define RES_Y 200
+#define DEPTH 32
+```
+
+This creates an authentic retro gaming experience with 320x200 pixels at 32-bit color depth.
+
+## Exit behavior
+
+Understanding what happens when you quit the game.
+
+### Normal exit
+
+When you exit the game normally (ESC key or close window):
+
+1. **Resolution restoration executes**
+   ```c
+   restaurarResolucionOriginal();
+   ```
+
+2. **Script runs automatically**
+   ```bash
+   /tmp/restaurar_xrandr.sh
+   ```
+
+3. **Display returns to original state**
+   - All monitors restore their resolution
+   - Position and layout restored
+   - Primary monitor designation restored
+
+### Abnormal termination
+
+If the game crashes or is forcibly killed:
+
+<Warning>
+  If the game crashes before restoration runs, your display may remain in an altered state. Manually run `/tmp/restaurar_xrandr.sh` to restore your configuration.
+</Warning>
+
+## Performance considerations
+
+Optimizing game performance on different systems.
+
+### Fullscreen vs windowed
+
+**Fullscreen mode** typically provides:
+- Lower input latency
+- Better frame pacing
+- Fewer context switches
+- Optimal for gameplay
+
+**Windowed mode** is better for:
+- Development and debugging
+- Multi-tasking
+- Screen recording
+- Testing
+
+### Frame timing
+
+The game uses a timer-based frame rate:
+
+```c
+TimerStart(timerfunc, 18);
+```
+
+This sets approximately 18 ticks per second for game logic updates.
+
+## Troubleshooting
+
+Common issues when running the game.
+
+### Game won't start
+
+**Issue:** No display mode specified
+
+**Solution:**
+```bash
+# Always specify -f or -w
+./pacman -w  # NOT just ./pacman
+```
+
+### Resolution not restored
+
+**Issue:** Display stays at wrong resolution after exit
+
+**Solution:**
+```bash
+# Manually run restoration script
+/tmp/restaurar_xrandr.sh
+
+# Or reset to preferred resolution
+xrandr --output HDMI-1 --mode 1920x1080 --rate 60
+```
+
+### Multi-monitor layout broken
+
+**Issue:** Monitors not in correct position after game
+
+**Solution:**
+```bash
+# Check if restoration script exists
+ls -l /tmp/restaurar_xrandr.sh
+
+# Examine script contents
+cat /tmp/restaurar_xrandr.sh
+
+# Run manually if needed
+bash /tmp/restaurar_xrandr.sh
+```
+
+### SDL initialization fails
+
+**Issue:** Error message about SDL initialization
+
+**Solution:**
+```bash
+# Ensure X11 is running
+echo $DISPLAY
+
+# Verify SDL libraries are installed
+ldd ./pacman | grep SDL
+
+# Try windowed mode first
+./pacman -w
+```
+
+### Wayland compatibility
+
+<Note>
+  This game is designed for X11 and uses xrandr. On Wayland, you may need to run under XWayland. Some display management features may not work correctly.
+</Note>
+
+To run on Wayland:
+
+```bash
+# Force XWayland
+GDK_BACKEND=x11 ./pacman -w
+```
+
+## Next steps
+
+Now that you know how to run the game:
+
+- Learn the [game controls](/guides/controls) and how to play
+- Explore the [building guide](/guides/building) to customize the game
+- Review the source code in `src/main.c` for initialization details

@@ -1,0 +1,262 @@
+---
+title: Dependencies
+description: Complete list of library dependencies and installation instructions
+---
+
+Pacman is built with C and SDL 1.2, requiring several system libraries for graphics, audio, and display management.
+
+## Required libraries
+
+<ParamField path="libsdl1.2-dev" type="package" required>
+  **SDL 1.2** (Simple DirectMedia Layer)
+  
+  Core multimedia library providing low-level access to audio, keyboard, mouse, and graphics hardware.
+  
+  **Used for:**
+  - Window and surface management
+  - Event handling (keyboard input)
+  - Video mode control
+  - Double buffering and palette management
+  
+  **Headers:** `SDL.h`
+  
+  **Linker flag:** `-lSDL`
+</ParamField>
+
+<ParamField path="libsdl-image1.2-dev" type="package" required>
+  **SDL_image 1.2**
+  
+  Image loading library for SDL that supports multiple formats including BMP, GIF, and PNG.
+  
+  **Used for:**
+  - Loading sprite graphics (`.bmp`, `.gif`)
+  - Loading game board textures
+  - Loading font bitmaps
+  
+  **Linker flag:** `-lSDL_image`
+</ParamField>
+
+<ParamField path="libmikmod-dev" type="package" required>
+  **libmikmod**
+  
+  Sound and music library for playing various audio formats.
+  
+  **Used for:**
+  - Background music playback
+  - Sound effects (eating pellets, ghost sounds, sirens)
+  - Game audio mixing
+  
+  **Audio files:** `.wav` files in `data/` directory
+  
+  **Linker flag:** `-lmikmod`
+</ParamField>
+
+<ParamField path="libglfw3-dev" type="package" required>
+  **GLFW 3**
+  
+  Multi-platform library for OpenGL, providing access to monitor and display information.
+  
+  **Used for:**
+  - Detecting primary monitor resolution
+  - Querying video mode and refresh rate
+  - Resolution information for restoration script
+  
+  **Headers:** `GLFW/glfw3.h`
+  
+  **Linker flag:** `-lglfw`
+  
+  <Note>
+    GLFW is only used for display detection, not for rendering. SDL 1.2 handles all graphics.
+  </Note>
+</ParamField>
+
+<ParamField path="x11-utils" type="package" required>
+  **X11 utilities** (includes `xrandr`)
+  
+  X Window System utilities for display configuration management.
+  
+  **Used for:**
+  - Saving multi-monitor layout
+  - Generating resolution restoration scripts
+  - Restoring display configuration on exit
+  
+  **Binary:** `/usr/bin/xrandr`
+  
+  <Warning>
+    The game will run without `xrandr`, but resolution restoration will not work. A warning is displayed at startup if not found.
+  </Warning>
+</ParamField>
+
+## System libraries
+
+These standard C libraries are also required:
+
+- **libm** - Math library (`-lm`)
+- **libc** - Standard C library (implicit)
+
+## Installation
+
+<Accordion title="Debian / Ubuntu">
+  ```bash
+  sudo apt install libsdl1.2-dev libsdl-image1.2-dev libglfw3-dev libmikmod-dev x11-utils
+  ```
+</Accordion>
+
+<Accordion title="Fedora / RHEL">
+  ```bash
+  sudo dnf install SDL-devel SDL_image-devel glfw-devel libmikmod-devel xorg-x11-utils
+  ```
+</Accordion>
+
+<Accordion title="Arch Linux">
+  ```bash
+  sudo pacman -S sdl sdl_image glfw-x11 libmikmod xorg-xrandr
+  ```
+</Accordion>
+
+<Accordion title="openSUSE">
+  ```bash
+  sudo zypper install libSDL-devel libSDL_image-devel glfw-devel libmikmod-devel xrandr
+  ```
+</Accordion>
+
+## Version requirements
+
+<Note>
+  The project was developed and tested on **Debian Testing** with the following library versions:
+</Note>
+
+| Library | Version | Notes |
+|---------|---------|-------|
+| SDL | 1.2.x | Must be SDL 1.2, not SDL 2.0 |
+| SDL_image | 1.2.x | Compatible with SDL 1.2 |
+| GLFW | 3.x | Version 3 or higher |
+| libmikmod | 3.x | Any recent version |
+| xrandr | - | Included in x11-utils |
+
+<Warning>
+  This project is **not compatible with SDL 2.0**. You must use SDL 1.2.x. The API and initialization functions are different between major versions.
+</Warning>
+
+## Build configuration
+
+Dependencies are configured in the `Makefile`:
+
+```makefile
+INCLUDEDIR = /usr/include/SDL
+LDFLAGS = -L/usr/lib -lSDL -lSDL_image -lm -lmikmod -lglfw
+```
+
+### Compiler flags
+
+The project uses these compiler optimizations:
+
+```makefile
+CFLAGS = -DLINUX -O3 -ggdb -ffast-math -funroll-loops \
+         -fomit-frame-pointer -Wall -pipe
+```
+
+## Verifying installation
+
+To verify all dependencies are installed:
+
+<CodeGroup>
+
+```bash Check SDL
+pkg-config --modversion sdl
+```
+
+```bash Check SDL_image
+pkg-config --libs SDL_image
+```
+
+```bash Check GLFW
+pkg-config --modversion glfw3
+```
+
+```bash Check xrandr
+which xrandr
+xrandr --version
+```
+
+```bash Check libmikmod
+ldconfig -p | grep mikmod
+```
+
+</CodeGroup>
+
+## Runtime dependencies
+
+In addition to compile-time libraries, the game requires:
+
+### Data files
+
+- **Sprites:** `data/sprites.bmp`, `data/sprites.gif`
+- **Fonts:** `data/fonts.bmp`, `data/fonts.gif`
+- **Backgrounds:** `data/tablero.bmp`, `data/portada.bmp`
+- **Audio files:** Various `.wav` files in `data/`
+
+### System requirements
+
+- **X11 display server** - Required for graphical output
+- **Linux kernel** - Developed for Linux (x86-64 or i386)
+- **Bash shell** - For running restoration scripts
+
+## Troubleshooting
+
+<AccordionGroup>
+
+<Accordion title="SDL header not found">
+  If you get compilation errors about missing SDL headers:
+  
+  1. Verify SDL 1.2 development files are installed:
+     ```bash
+     dpkg -l | grep libsdl1.2-dev
+     ```
+  
+  2. Check header location:
+     ```bash
+     ls /usr/include/SDL/SDL.h
+     ```
+  
+  3. Update `INCLUDEDIR` in Makefile if headers are in a different location
+</Accordion>
+
+<Accordion title="Linker errors">
+  If you get undefined reference errors during linking:
+  
+  1. Verify libraries are installed:
+     ```bash
+     ldconfig -p | grep -E '(SDL|mikmod|glfw)'
+     ```
+  
+  2. Check library paths:
+     ```bash
+     pkg-config --libs sdl SDL_image
+     ```
+  
+  3. Ensure all required libraries are in `LDFLAGS`
+</Accordion>
+
+<Accordion title="No xrandr warning">
+  If you see the warning about xrandr not being available:
+  
+  1. Install x11-utils:
+     ```bash
+     sudo apt install x11-utils
+     ```
+  
+  2. Verify installation:
+     ```bash
+     xrandr --version
+     ```
+  
+  The game will still run, but resolution restoration won't work.
+</Accordion>
+
+</AccordionGroup>
+
+## See also
+
+- [Command-line reference](/reference/command-line) - Usage and options
+- [File structure](/reference/file-structure) - Project organization

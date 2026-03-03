@@ -1,0 +1,285 @@
+---
+title: Contributing to Pacman
+description: Learn how to contribute to the Pacman SDL 1.2 project including setup, code style, and pull request guidelines
+---
+
+## Welcome contributors
+
+Thank you for your interest in contributing to this classic Pacman clone! This project is built in C using SDL 1.2 and includes advanced features like resolution restoration with xrandr on Linux systems.
+
+## Setting up your development environment
+
+<Steps>
+  <Step title="Install required dependencies">
+    On Debian/Ubuntu systems, install all necessary libraries:
+    
+    ```bash
+    sudo apt install libsdl1.2-dev libsdl-image1.2-dev libglfw3-dev libmikmod-dev x11-utils
+    ```
+    
+    <Note>
+      `x11-utils` provides `xrandr`, which is required for resolution restoration features.
+    </Note>
+  </Step>
+  
+  <Step title="Clone the repository">
+    ```bash
+    git clone <repository-url>
+    cd pacman
+    ```
+  </Step>
+  
+  <Step title="Build the project">
+    The project uses a traditional Makefile:
+    
+    ```bash
+    make
+    ```
+    
+    This will compile all source files in `src/` and generate the `pacman` executable.
+  </Step>
+  
+  <Step title="Test your build">
+    Run the game to verify everything works:
+    
+    ```bash
+    ./pacman -w  # Windowed mode
+    ./pacman -f  # Fullscreen mode
+    ```
+  </Step>
+</Steps>
+
+## Project structure
+
+```
+pacman/
+├── Makefile           # Build configuration
+├── src/
+│   ├── main.c         # Entry point, xrandr resolution handling
+│   ├── gfx.c          # SDL graphics initialization and rendering
+│   ├── misc.c         # Game logic, sprite handling, AI
+│   ├── mov_fig.c      # Character movement
+│   ├── sprites.c      # Sprite management
+│   ├── movefant.c     # Ghost movement algorithms
+│   └── include/       # Header files
+├── data/              # Game assets (sprites, images)
+└── sound              # Audio flag file
+```
+
+## Code style and conventions
+
+Based on the existing codebase, please follow these conventions:
+
+### Naming conventions
+
+- **Variables**: Use snake_case for variables and functions
+  ```c
+  int resolucion_ancho = 0;
+  void guardarResolucionOriginal()
+  ```
+
+- **Constants**: Use UPPER_CASE for preprocessor definitions
+  ```c
+  #define MAXX_A 32
+  #define RES_X 320
+  #define TRUE 1
+  ```
+
+- **Structs**: Use lowercase names
+  ```c
+  struct fantasmas fan;
+  struct pcman pc;
+  ```
+
+### Formatting
+
+- **Indentation**: Use 2 spaces (not tabs)
+- **Braces**: Opening brace on same line for functions
+  ```c
+  void init_gfx(void)
+  {
+      // Function body
+  }
+  ```
+
+- **Line length**: No strict limit, but keep it readable (typically under 100 characters)
+
+### Comments
+
+- Use Spanish or English for comments (the codebase contains both)
+- Add comments for complex logic, especially AI algorithms
+- Document any xrandr or resolution-specific code
+
+```c
+// Crear script de restauración completo
+FILE *fp = fopen(script_restauracion, "w");
+```
+
+### Error handling
+
+- Always check return values from SDL functions
+- Print error messages to stderr with descriptive context
+
+```c
+if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) < 0)
+{
+    fprintf(stderr, "Couldn't initialize SDL: %s\n", SDL_GetError());
+    exit(1);
+}
+```
+
+## Areas for contribution
+
+Here are some ways you can contribute to the project:
+
+<AccordionGroup>
+  <Accordion title="Features" icon="star">
+    - Additional game modes (time trial, survival)
+    - High score persistence (save to file)
+    - Sound effects and music (using libmikmod)
+    - Power-up variations
+    - Additional levels with different layouts
+    - Gamepad/joystick support
+  </Accordion>
+  
+  <Accordion title="Bug fixes" icon="bug">
+    - Resolution restoration issues on specific hardware
+    - Multi-monitor edge cases
+    - Memory leaks or segmentation faults
+    - Timing issues on different refresh rates
+    - Ghost AI pathfinding improvements
+  </Accordion>
+  
+  <Accordion title="Performance" icon="gauge">
+    - Optimize sprite rendering (see `gfx.c:142`)
+    - Reduce CPU usage in game loop
+    - Improve memory management
+    - Profile and optimize hot paths
+  </Accordion>
+  
+  <Accordion title="Platform support" icon="laptop">
+    - macOS support (replace xrandr with native APIs)
+    - BSD compatibility
+    - Wayland support (alternative to X11/xrandr)
+    - Windows port (using different resolution APIs)
+  </Accordion>
+  
+  <Accordion title="Documentation" icon="book">
+    - Code documentation and comments
+    - Algorithm explanations (ghost AI)
+    - Architecture diagrams
+    - Gameplay guides
+    - Translation of Spanish comments to English
+  </Accordion>
+  
+  <Accordion title="Code quality" icon="code">
+    - Add function documentation
+    - Refactor long functions (see `misc.c:506` - 916 lines)
+    - Improve error handling
+    - Add input validation
+    - Remove unused code (see commented sections)
+  </Accordion>
+</AccordionGroup>
+
+## Pull request process
+
+<Steps>
+  <Step title="Create a feature branch">
+    ```bash
+    git checkout -b feature/your-feature-name
+    ```
+    
+    Use descriptive branch names:
+    - `feature/` for new features
+    - `fix/` for bug fixes
+    - `docs/` for documentation
+    - `refactor/` for code improvements
+  </Step>
+  
+  <Step title="Make your changes">
+    - Follow the code style conventions above
+    - Test thoroughly in both windowed and fullscreen modes
+    - Test with single and multiple monitors if changing resolution code
+    - Keep commits focused and atomic
+  </Step>
+  
+  <Step title="Test your changes">
+    Before submitting:
+    
+    ```bash
+    # Clean build
+    make clean
+    make
+    
+    # Test both modes
+    ./pacman -w
+    ./pacman -f
+    ```
+    
+    <Warning>
+      If you modified resolution or xrandr code, test on actual multi-monitor setups to ensure restoration works correctly.
+    </Warning>
+  </Step>
+  
+  <Step title="Commit your changes">
+    Write clear commit messages:
+    
+    ```bash
+    git add .
+    git commit -m "Add high score persistence feature"
+    ```
+    
+    Good commit message format:
+    - Start with a verb (Add, Fix, Update, Refactor)
+    - Be concise but descriptive
+    - Reference issue numbers if applicable
+  </Step>
+  
+  <Step title="Push and create pull request">
+    ```bash
+    git push origin feature/your-feature-name
+    ```
+    
+    Then create a pull request on the repository with:
+    - Clear title describing the change
+    - Description of what was changed and why
+    - Screenshots/videos for visual changes
+    - Testing steps you performed
+    - Any breaking changes or compatibility notes
+  </Step>
+</Steps>
+
+## Building and cleaning
+
+```bash
+# Build the project
+make
+
+# Clean build artifacts
+make clean
+
+# This removes:
+# - All .o object files
+# - The pacman executable
+```
+
+<Note>
+  The `.gitignore` is configured to exclude `*.o`, `*~`, and the `pacman` executable. Never commit these files.
+</Note>
+
+## Getting help
+
+If you have questions or need help:
+
+- Review existing code in `src/` for examples
+- Check the README.md for project overview
+- Open an issue for discussion before major changes
+- Reference SDL 1.2 documentation for graphics-related questions
+
+## Code of conduct
+
+This project is for educational and personal use. Be respectful, constructive, and collaborative in all interactions.
+
+<Note>
+  Developed by **amr** using Debian Testing and classic C programming tools. Contributions are welcome to keep this project alive and improve it for the community!
+</Note>

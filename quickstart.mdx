@@ -1,80 +1,329 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get Pacman up and running in under 5 minutes
 ---
 
-## Get started in three steps
+## Before you begin
 
-Get your documentation site running locally and make your first customization.
+Make sure you have installed all required dependencies. If you haven't done this yet, follow the [installation guide](/installation) first.
 
-### Step 1: Set up your local environment
+## Get up and running
+
+<Steps>
+  <Step title="Navigate to the project directory">
+    Open a terminal and change to the Pacman source directory:
+    
+    ```bash
+    cd ~/workspace/source
+    ```
+    
+    Verify you're in the correct directory by listing the contents:
+    
+    ```bash
+    ls
+    ```
+    
+    You should see files like `Makefile`, `README.md`, and directories like `src/` and `data/`.
+  </Step>
+  
+  <Step title="Compile the game">
+    Build the game using Make:
+    
+    ```bash
+    make
+    ```
+    
+    The compilation process will:
+    - Compile all C source files in `src/` directory
+    - Link with SDL, GLFW, and MikMod libraries
+    - Generate an executable named `pacman`
+    
+    The Makefile uses these optimizations:
+    
+    ```makefile Makefile
+    CC = gcc
+    CFLAGS = -DLINUX -O3 -ggdb -ffast-math -funroll-loops \
+             -fomit-frame-pointer -Wall -pipe
+    LDFLAGS = -L/usr/lib -lSDL -lSDL_image -lm -lmikmod -lglfw
+    
+    SRC = src/main.c \
+          src/gfx.c \
+          src/menuopt.c \
+          src/mov_fig.c \
+          src/sprites.c \
+          src/movefant.c \
+          src/misc.c
+    ```
+    
+    <Note>
+    Compilation typically takes 5-10 seconds on modern hardware. If you see any errors, verify all dependencies are installed correctly.
+    </Note>
+  </Step>
+  
+  <Step title="Launch the game">
+    Run Pacman in your preferred mode:
+    
+    <CodeGroup>
+      ```bash Fullscreen
+      ./pacman -f
+      ```
+      
+      ```bash Windowed
+      ./pacman -w
+      ```
+    </CodeGroup>
+    
+    **Fullscreen mode** (`-f`):
+    - Captures the entire display
+    - Saves current resolution before starting
+    - Generates restoration script at `/tmp/restaurar_xrandr.sh`
+    - Automatically restores settings on exit
+    
+    **Windowed mode** (`-w`):
+    - Runs in a 320x200 window
+    - Does not modify display settings
+    - Useful for testing or playing alongside other applications
+    
+    On startup, you'll see output like:
+    
+    ```
+    ✅ xrandr disponible. Se podrá guardar/restaurar la configuración de pantalla.
+    Resolución guardada: 1920x1080 @60Hz
+    📝 Script de restauración generado con disposición y salida primaria en /tmp/restaurar_xrandr.sh
+    ```
+  </Step>
+  
+  <Step title="Play the game">
+    Navigate the main menu and start playing:
+    
+    - Press **SPACE** to start the game from the main menu
+    - Press **ESC** to exit at any time
+    
+    The menu displays the four ghost personalities with their names scrolling across the screen.
+  </Step>
+</Steps>
+
+## Game controls
+
+Pacman uses simple arrow key controls:
+
+<CardGroup cols={2}>
+  <Card title="Arrow Up" icon="arrow-up">
+    Move Pacman up
+  </Card>
+  
+  <Card title="Arrow Down" icon="arrow-down">
+    Move Pacman down
+  </Card>
+  
+  <Card title="Arrow Right" icon="arrow-right">
+    Move Pacman right
+  </Card>
+  
+  <Card title="Arrow Left" icon="arrow-left">
+    Move Pacman left
+  </Card>
+</CardGroup>
+
+<Card title="Escape Key" icon="door-open">
+  Exit the game and restore display settings
+</Card>
+
+### Movement mechanics
+
+The game implements smooth, authentic Pacman movement:
+
+```c src/teclado.c
+void actualizar_movimiento_pacman(Uint8 *keys, int *arr_pulsada, 
+                                  int *aba_pulsada, int *der_pulsada, 
+                                  int *izq_pulsada) {
+    if (keys[SDLK_UP]) {
+        pc.yf = ((pc.y - 1) * 32);
+        pc.dir = pc.x + pc.yf;
+        if (c_array[(int)pc.dir] != 0.0 && c_array[(int)pc.dir] != P) {
+            pc.inc_y = -1;
+            pc.inc_x = 0;
+        }
+    }
+    // Similar logic for DOWN, RIGHT, LEFT
+}
+```
+
+- Movement is grid-based with smooth interpolation
+- You can buffer the next direction by pressing early
+- Pacman stops when hitting walls
+- Special tunnel passages wrap around the screen
+
+## Gameplay basics
+
+### Objective
+
+Navigate the maze, eat all dots, and avoid ghosts. Collect power pellets to temporarily turn the tables and hunt the ghosts.
+
+### Scoring
+
+- **Regular dot**: 10 points
+- **Power pellet**: 50 points (plus the ability to eat ghosts)
+- **Ghost**: Bonus points when eaten in powered-up mode
+- **Fruit**: Special bonus items appear periodically
+
+### Power pellets
+
+Four power pellets are located in the corners of the maze:
+
+```c src/teclado.c
+void verificar_bolones_asusta_fantasmas(int *xp, int *yp) {
+    if (c_array[(int)(pc.x + (pc.y * 32))] == B) {
+        c_array[(int)(pc.x + (pc.y * 32))] = J;
+        pc.estado_pcman = ENFADADO;
+        for (int i = 0; i < 4; ++i) {
+            if (fan.estado_fantasma[i] == NORMAL)
+                fan.estado_fantasma[i] = ENFADADO;
+        }
+        pc.puntuacion += 50;
+    }
+}
+```
+
+When collected:
+- Ghosts turn scared and flee to random positions
+- You can eat ghosts for bonus points
+- Effect lasts for a limited time (managed by `CntStep` counter)
+- Ghosts flash before returning to normal state
+
+### Level progression
+
+When you clear all dots:
+
+```c src/teclado.c
+if (pc.puntos == 0) {
+    adelanta_nivel(&fan, &pc);
+}
+```
+
+- Level advances automatically
+- Ghost speed and AI difficulty increase
+- Pacman respawns at starting position
+- New maze appears with fresh dots
+
+## Cleaning up after playing
+
+### Normal cleanup
+
+If you exit using ESC, the game automatically:
+1. Runs the restoration script at `/tmp/restaurar_xrandr.sh`
+2. Restores your original resolution and refresh rate
+3. Repositions all monitors to their original layout
+4. Restores the primary display designation
+
+```c src/main.c
+void restaurarResolucionOriginal() {
+    if (resolucion_ancho > 0 && resolucion_alto > 0) {
+        printf("Restaurando configuración de monitores desde script...\n");
+        char comando[128];
+        snprintf(comando, sizeof(comando), "%s", script_restauracion);
+        system(comando);
+    }
+}
+```
+
+### Manual restoration
+
+If the game crashes or you need to manually restore your display:
+
+```bash
+# Run the restoration script directly
+/tmp/restaurar_xrandr.sh
+
+# Or check current display settings
+xrandr --query
+```
+
+<Warning>
+The restoration process typically takes 1-2 seconds with multiple monitors. Don't interrupt this process or your display configuration may remain in an incorrect state.
+</Warning>
+
+## Building and cleaning
+
+### Rebuild after changes
+
+If you modify source files:
+
+```bash
+# Clean old build artifacts
+make clean
+
+# Rebuild from scratch
+make
+```
+
+### What gets built
+
+The build process creates:
+- `*.o` object files in `src/` directory (one per C source file)
+- `pacman` executable in the root directory
+
+All build artifacts are excluded from version control via `.gitignore`:
+
+```gitignore
+*.o      # Object files
+*~       # Editor backup files
+pacman   # The executable
+```
+
+## Troubleshooting
 
 <AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+  <Accordion title="Game doesn't start - SDL initialization failed">
+    This usually means SDL can't access your display. Ensure:
+    - You're running on X11 (not pure Wayland)
+    - The DISPLAY environment variable is set: `echo $DISPLAY`
+    - X11 server is running
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
+    Try running with windowed mode first: `./pacman -w`
   </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+  
+  <Accordion title="No sound effects">
+    The game requires MikMod for audio. Check:
+    - `libmikmod-dev` is installed
+    - Your sound system (ALSA/PulseAudio) is working
+    - Volume is not muted
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
+    Test your sound system with: `speaker-test -t wav -c 2`
+  </Accordion>
+  
+  <Accordion title="Resolution not restored after exit">
+    If your display settings aren't restored:
+    
+    1. Check if the script exists: `ls -l /tmp/restaurar_xrandr.sh`
+    2. Run it manually: `/tmp/restaurar_xrandr.sh`
+    3. If that doesn't work, use xrandr directly:
+       ```bash
+       xrandr --output HDMI-1 --mode 1920x1080 --rate 60
+       ```
+       (Replace HDMI-1 with your display name from `xrandr --query`)
+  </Accordion>
+  
+  <Accordion title="Game runs too fast or too slow">
+    The game uses a fixed 18ms timer interval:
+    
+    ```c src/main.c
+    TimerStart(timerfunc, 18);
+    ```
+    
+    If timing seems off, it may be related to your system's timer resolution. This is uncommon on modern Linux systems but can occur on virtual machines.
   </Accordion>
 </AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
+Now that you're playing:
 
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+- Master ghost AI patterns by observing their behaviors
+- Learn optimal power pellet timing for maximum points
+- Explore the tunnel passages for strategic advantages
+- Try to beat your high score
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+The game saves your current score in memory but doesn't persist high scores between sessions. Consider tracking your personal bests manually if you want to compete with yourself over time.
 </Note>

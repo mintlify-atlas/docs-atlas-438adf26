@@ -1,0 +1,432 @@
+---
+title: Troubleshooting
+description: Common issues and solutions for building and running the Pacman SDL 1.2 project
+---
+
+## Common issues and solutions
+
+This guide covers frequent problems encountered when building and running the Pacman game, along with their solutions.
+
+## Compilation errors
+
+<AccordionGroup>
+  <Accordion title="SDL library not found" icon="circle-xmark">
+    **Error message:**
+    ```
+    fatal error: SDL.h: No such file or directory
+    ```
+    
+    **Solution:**
+    
+    Install the SDL development libraries:
+    
+    ```bash
+    sudo apt install libsdl1.2-dev libsdl-image1.2-dev
+    ```
+    
+    <Note>
+      Make sure you install `libsdl1.2-dev`, not `libsdl2-dev`. This project requires SDL 1.2 specifically.
+    </Note>
+  </Accordion>
+  
+  <Accordion title="GLFW library not found" icon="circle-xmark">
+    **Error message:**
+    ```
+    fatal error: GLFW/glfw3.h: No such file or directory
+    ```
+    
+    **Solution:**
+    
+    Install GLFW3 development library:
+    
+    ```bash
+    sudo apt install libglfw3-dev
+    ```
+    
+    GLFW is used for resolution detection in `main.c:24-54`.
+  </Accordion>
+  
+  <Accordion title="Linking errors with -lmikmod" icon="circle-xmark">
+    **Error message:**
+    ```
+    /usr/bin/ld: cannot find -lmikmod
+    ```
+    
+    **Solution:**
+    
+    Install the mikmod library:
+    
+    ```bash
+    sudo apt install libmikmod-dev
+    ```
+    
+    This library is required for audio support.
+  </Accordion>
+  
+  <Accordion title="Undefined reference to math functions" icon="circle-xmark">
+    **Error message:**
+    ```
+    undefined reference to `fabs'
+    undefined reference to `rand'
+    ```
+    
+    **Solution:**
+    
+    Ensure the Makefile includes `-lm` in LDFLAGS (it should already be there):
+    
+    ```makefile
+    LDFLAGS = -L/usr/lib -lSDL -lSDL_image -lm -lmikmod -lglfw
+    ```
+    
+    If the problem persists, clean and rebuild:
+    
+    ```bash
+    make clean
+    make
+    ```
+  </Accordion>
+  
+  <Accordion title="Implicit function declaration warnings" icon="triangle-exclamation">
+    **Warning message:**
+    ```
+    warning: implicit declaration of function 'strcspn'
+    ```
+    
+    **Solution:**
+    
+    While these are warnings (not errors), they should be fixed by ensuring proper includes:
+    
+    ```c
+    #include <string.h>  // For strcspn, strlen, memcpy
+    #include <stdlib.h>  // For malloc, rand, exit
+    #include <stdio.h>   // For printf, fprintf, FILE
+    ```
+    
+    These includes should already be in the source files.
+  </Accordion>
+</AccordionGroup>
+
+## Runtime errors
+
+<AccordionGroup>
+  <Accordion title="Couldn't initialize SDL error" icon="circle-xmark">
+    **Error message:**
+    ```
+    Couldn't initialize SDL: No available video device
+    ```
+    
+    **Solution:**
+    
+    This typically occurs when running without X11/Wayland display:
+    
+    1. Ensure you're in a graphical environment (not SSH without X forwarding)
+    2. Check DISPLAY environment variable:
+       ```bash
+       echo $DISPLAY
+       ```
+    3. If using SSH, enable X forwarding:
+       ```bash
+       ssh -X user@host
+       ```
+    4. On Wayland, install SDL X11 compatibility:
+       ```bash
+       sudo apt install libsdl1.2debian
+       ```
+  </Accordion>
+  
+  <Accordion title="Video mode initialization failed" icon="circle-xmark">
+    **Error message:**
+    ```
+    Couldn't init video mode: No video mode large enough
+    ```
+    
+    **Solution:**
+    
+    The game requires 320x200 resolution support:
+    
+    1. Try windowed mode instead of fullscreen:
+       ```bash
+       ./pacman -w
+       ```
+    
+    2. Check your display supports 32-bit color depth
+    
+    3. Update graphics drivers if using older hardware
+    
+    <Note>
+      Windowed mode (`-w`) is more compatible across different systems than fullscreen (`-f`).
+    </Note>
+  </Accordion>
+  
+  <Accordion title="Segmentation fault on startup" icon="circle-xmark">
+    **Error message:**
+    ```
+    Segmentation fault (core dumped)
+    ```
+    
+    **Potential causes and solutions:**
+    
+    1. **Missing game assets**
+       - Check that the `data/` directory exists and contains required files:
+         ```bash
+         ls data/
+         # Should show: sprites.bmp, tablero.bmp, ELUGlogo.gif
+         ```
+    
+    2. **Corrupted sprite files**
+       - The game loads sprites from `data/sprites.bmp` at startup
+       - Verify file integrity and format (should be BMP)
+    
+    3. **Memory allocation issues**
+       - Run with debugging:
+         ```bash
+         gdb ./pacman
+         run -w
+         # When it crashes: backtrace
+         ```
+  </Accordion>
+</AccordionGroup>
+
+## xrandr and resolution issues
+
+<AccordionGroup>
+  <Accordion title="xrandr not available warning" icon="triangle-exclamation">
+    **Warning message:**
+    ```
+    ⚠️  ADVERTENCIA: 'xrandr' no está disponible en el sistema.
+    No se podrá guardar ni restaurar la resolución automáticamente.
+    ```
+    
+    **Solution:**
+    
+    Install xrandr (part of x11-utils):
+    
+    ```bash
+    sudo apt install x11-utils
+    ```
+    
+    Verify installation:
+    ```bash
+    which xrandr
+    xrandr --version
+    ```
+    
+    <Warning>
+      Without xrandr, the game will still run, but resolution changes won't be automatically restored when you exit.
+    </Warning>
+  </Accordion>
+  
+  <Accordion title="Resolution not restored after exit" icon="circle-xmark">
+    **Problem:**
+    After closing the game in fullscreen mode, your desktop resolution remains changed.
+    
+    **Solution:**
+    
+    1. **Manually run the restoration script:**
+       ```bash
+       /tmp/restaurar_xrandr.sh
+       ```
+    
+    2. **Check if script was created:**
+       ```bash
+       ls -l /tmp/restaurar_xrandr.sh
+       cat /tmp/restaurar_xrandr.sh
+       ```
+    
+    3. **Manually restore resolution:**
+       ```bash
+       # Check current displays
+       xrandr --query
+       
+       # Set back to your preferred resolution (example)
+       xrandr --output HDMI-1 --mode 1920x1080 --rate 60
+       ```
+    
+    <Note>
+      The restoration script is generated at `src/main.c:56-111` during game startup. If the game crashes, this script can be manually executed.
+    </Note>
+  </Accordion>
+  
+  <Accordion title="Multi-monitor configuration lost" icon="display">
+    **Problem:**
+    After running in fullscreen, your multi-monitor setup (extended displays, positions) is incorrect.
+    
+    **Solution:**
+    
+    1. **Check the restoration script contents:**
+       ```bash
+       cat /tmp/restaurar_xrandr.sh
+       ```
+       
+       It should contain commands with `--pos` and `--primary` flags.
+    
+    2. **Execute the script:**
+       ```bash
+       bash /tmp/restaurar_xrandr.sh
+       ```
+    
+    3. **Manual restoration (example for dual monitors):**
+       ```bash
+       # Primary monitor
+       xrandr --output HDMI-1 --mode 1920x1080 --pos 0x0 --primary
+       
+       # Secondary monitor (positioned to the right)
+       xrandr --output DP-1 --mode 1920x1080 --pos 1920x0
+       ```
+    
+    <Warning>
+      Resolution restoration can take 1-2 seconds, especially with multiple monitors. This is normal behavior.
+    </Warning>
+  </Accordion>
+  
+  <Accordion title="Wayland session - xrandr unavailable" icon="window-restore">
+    **Problem:**
+    Running on Wayland instead of X11, xrandr doesn't work.
+    
+    **Solution:**
+    
+    1. **Use X11 session instead:**
+       - Log out and select X11 session at login screen
+       - Or force X11:
+         ```bash
+         export GDK_BACKEND=x11
+         ./pacman -f
+         ```
+    
+    2. **Stick to windowed mode:**
+       ```bash
+       ./pacman -w
+       ```
+       Windowed mode doesn't change system resolution.
+    
+    <Note>
+      Wayland uses different display management APIs. Full Wayland support would require code changes in `main.c`.
+    </Note>
+  </Accordion>
+</AccordionGroup>
+
+## Audio issues
+
+<AccordionGroup>
+  <Accordion title="No sound or audio errors" icon="volume-xmark">
+    **Problem:**
+    No audio plays during gameplay.
+    
+    **Solution:**
+    
+    1. **Check if sound file exists:**
+       ```bash
+       ls -l sound
+       ```
+       The presence of this file enables audio.
+    
+    2. **Verify audio system:**
+       ```bash
+       # Check if sound system is working
+       speaker-test -t wav -c 2
+       ```
+    
+    3. **Install audio dependencies:**
+       ```bash
+       sudo apt install libmikmod3 libsdl1.2debian
+       ```
+    
+    4. **Check mixer settings:**
+       ```bash
+       alsamixer  # Ensure Master volume is not muted
+       ```
+    
+    <Note>
+      Audio implementation may be incomplete or commented out in current version. Check `misc.c` for `playon` variable usage.
+    </Note>
+  </Accordion>
+</AccordionGroup>
+
+## Performance issues
+
+<AccordionGroup>
+  <Accordion title="Game running too fast or too slow" icon="gauge">
+    **Problem:**
+    Gameplay speed is inconsistent or incorrect.
+    
+    **Solution:**
+    
+    The game uses a timer-based frame limiter at `gfx.c:108`:
+    
+    ```c
+    next_tick = this_tick + (1000 / FRAMES_PER_SEC);
+    ```
+    
+    1. **Check CPU usage:**
+       ```bash
+       top -p $(pgrep pacman)
+       ```
+    
+    2. **Verify FRAMES_PER_SEC definition in gfx.h**
+    
+    3. **Timer signal issues:**
+       The game uses `SIGALRM` with `setitimer` at 18.2 Hz (see `gfx.c:155-178`)
+    
+    <Warning>
+      High system load or timer conflicts with other processes can affect game speed.
+    </Warning>
+  </Accordion>
+  
+  <Accordion title="High CPU usage" icon="fire">
+    **Problem:**
+    Game consumes excessive CPU resources.
+    
+    **Solution:**
+    
+    1. **Normal behavior:**
+       SDL 1.2 without hardware acceleration can use significant CPU
+    
+    2. **Try hardware acceleration:**
+       Set SDL to use hardware surface:
+       ```bash
+       export SDL_VIDEODRIVER=x11
+       ./pacman -f
+       ```
+    
+    3. **Monitor with:**
+       ```bash
+       htop  # Look for 'pacman' process
+       ```
+    
+    The game loop runs continuously (see `misc.c:538-912`), which is typical for SDL 1.2 games.
+  </Accordion>
+</AccordionGroup>
+
+## Still having issues?
+
+If none of these solutions work:
+
+<Steps>
+  <Step title="Check system logs">
+    ```bash
+    dmesg | tail -50
+    journalctl -xe
+    ```
+  </Step>
+  
+  <Step title="Run with debugging">
+    The Makefile includes `-ggdb` flag. Use gdb:
+    ```bash
+    gdb ./pacman
+    run -w
+    ```
+  </Step>
+  
+  <Step title="Report the issue">
+    Open an issue with:
+    - Your Linux distribution and version
+    - SDL version (`sdl-config --version`)
+    - Complete error output
+    - Steps to reproduce
+    - Output of `xrandr --query` if resolution-related
+  </Step>
+</Steps>
+
+<Note>
+  This project was developed on Debian Testing. Most issues occur from missing dependencies or unsupported display configurations.
+</Note>

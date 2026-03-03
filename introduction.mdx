@@ -1,0 +1,117 @@
+---
+title: Introduction
+description: A classic Pacman clone built in C with SDL 1.2, featuring automatic resolution restoration and multi-monitor support
+---
+
+## What is Pacman?
+
+Pacman is a faithful recreation of the classic arcade game, developed in C using SDL 1.2. This implementation brings the nostalgic gameplay of the original Pacman to Linux systems with modern conveniences like automatic display resolution restoration and multi-monitor configuration support.
+
+The game features four colorful ghosts with distinct AI behaviors, power pellets that turn the tables on your pursuers, and progressive difficulty levels that challenge even experienced players.
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="SDL 1.2 graphics engine" icon="gamepad">
+    Classic 2D rendering with hardware-accelerated graphics and audio support
+  </Card>
+  
+  <Card title="Automatic resolution restoration" icon="display">
+    Intelligently saves and restores your monitor configuration when exiting the game
+  </Card>
+  
+  <Card title="Multi-monitor support" icon="screen-users">
+    Handles extended desktop setups with proper position and primary display management
+  </Card>
+  
+  <Card title="Authentic gameplay" icon="ghost">
+    Four ghosts with unique AI behaviors, power pellets, and progressive difficulty
+  </Card>
+</CardGroup>
+
+## Display management
+
+One of the standout features of this Pacman implementation is its sophisticated display management system. Built for Linux with X11, the game uses a combination of GLFW and xrandr to:
+
+- Capture your current screen resolution and refresh rate before launching
+- Generate a restoration script at `/tmp/restaurar_xrandr.sh` that preserves:
+  - Resolution for each connected display
+  - Relative positioning between monitors
+  - Primary display designation
+- Automatically restore your desktop configuration when you exit
+
+This means you can play in fullscreen mode without worrying about your carefully configured multi-monitor setup being disrupted.
+
+<Note>
+The restoration process typically takes 1-2 seconds, especially with multiple monitors connected.
+</Note>
+
+## Ghost AI personalities
+
+Each of the four ghosts has its own hunting behavior:
+
+- **Red Ghost (Nagosia)**: Directly targets Pacman's current position
+- **Blue Ghost (Beltzak)**: Follows Pacman's previous position with slight delay
+- **Yellow Ghost (Azkar)**: Switches between aggressive pursuit and random wandering within a 9-tile radius
+- **Gray Ghost (aMoK)**: Similar behavior to yellow, providing unpredictable gameplay
+
+When you collect a power pellet, all ghosts enter "scared" mode and flee to random positions, giving you a chance to hunt them down for bonus points.
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get playing in under 5 minutes
+  </Card>
+  
+  <Card title="Installation" icon="download" href="/installation">
+    Install dependencies and set up your system
+  </Card>
+</CardGroup>
+
+## Technical stack
+
+The game is built with classic Linux development tools:
+
+```c src/main.c
+#include "SDL.h"
+#include <GLFW/glfw3.h>
+
+int main(int argc, char **argv) {
+    // Command-line options: -f (fullscreen) or -w (windowed)
+    while ((ch = getopt(argc, argv, "fw")) != -1)
+        switch (ch) {
+        case 'f':
+            sdl_flags = (SDL_SWSURFACE | SDL_HWPALETTE | 
+                        SDL_DOUBLEBUF | SDL_FULLSCREEN);
+            break;
+        case 'w':
+            sdl_flags = (SDL_SWSURFACE | SDL_HWPALETTE | 
+                        SDL_DOUBLEBUF);
+            break;
+        }
+    
+    guardarResolucionOriginal();
+    init_gfx();
+    stargame(&fan, &pc, COMENZAR);
+    restaurarResolucionOriginal();
+}
+```
+
+<Warning>
+This game requires X11 and is optimized for Debian/Ubuntu-based Linux distributions. The xrandr utility must be installed for automatic resolution restoration to work.
+</Warning>
+
+## Project structure
+
+The codebase is organized into modular components:
+
+- **src/main.c** - Entry point and display management (src/main.c:160)
+- **src/gfx.c** - Graphics initialization and rendering
+- **src/movefant.c** - Ghost movement and AI logic
+- **src/mov_fig.c** - Pacman movement and collision detection
+- **src/teclado.c** - Keyboard input handling (src/teclado.c:17)
+- **src/sprites.c** - Sprite loading and management
+- **data/** - Game assets including sprites, sounds, and fonts
+
+The game uses a traditional Makefile build system with GCC compiler optimizations for performance.

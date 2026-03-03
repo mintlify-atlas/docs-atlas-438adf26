@@ -1,0 +1,450 @@
+---
+title: Resolution management with xrandr and GLFW
+description: Multi-monitor resolution backup and restoration system using GLFW for detection and xrandr for configuration
+---
+
+## Overview
+
+The Pacman game includes a sophisticated resolution management system to handle fullscreen mode gracefully on multi-monitor Linux systems. When running in fullscreen (`-f` flag), the game:
+
+1. Detects current monitor configuration using GLFW
+2. Generates an xrandr restoration script
+3. Restores the original configuration on exit
+
+This ensures the desktop environment returns to its original state even if the game crashes or is force-quit.
+
+## Architecture
+
+The system uses two complementary technologies:
+
+<Tabs>
+  <Tab title="GLFW">
+    **Purpose:** Monitor detection and video mode query
+    
+    GLFW provides a cross-platform API to query monitor information without needing X11-specific code. Used in:
+    - `guardarResolucionOriginal()` - Detect primary monitor resolution
+    - Clean C API that initializes/terminates easily
+    
+    ```c
+    #include <GLFW/glfw3.h>
+    ```
+  </Tab>
+  <Tab title="xrandr">
+    **Purpose:** Resolution and monitor layout restoration
+    
+    xrandr (X Resize and Rotate) is the standard X11 tool for:
+    - Querying display configuration
+    - Setting resolution, position, and rotation
+    - Managing multi-monitor layouts
+    
+    The game generates shell scripts that call xrandr commands.
+  </Tab>
+</Tabs>
+
+## Resolution backup
+
+The `guardarResolucionOriginal()` function in **src/main.c:24-111** handles the backup process.
+
+### GLFW-based detection
+
+From **src/main.c:26-54**:
+
+```c
+void guardarResolucionOriginal()
+{
+  if (!glfwInit())
+  {
+    fprintf(stderr, "No se pudo inicializar GLFW\n");
+    return;
+  }
+
+  GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+  if (!monitor)
+  {
+    fprintf(stderr, "No se pudo obtener el monitor principal\n");
+    glfwTerminate();
+    return;
+  }
+
+  const GLFWvidmode *mode = glfwGetVideoMode(monitor);
+  if (!mode)
+  {
+    fprintf(stderr, "No se pudo obtener el modo de video\n");
+    glfwTerminate();
+    return;
+  }
+
+  resolucion_ancho = mode->width;
+  resolucion_alto = mode->height;
+  refresco_hz = mode->refreshRate;
+
+  printf("Resolución guardada: %dx%d @%dHz\n", 
+         resolucion_ancho, resolucion_alto, refresco_hz);
+
+  glfwTerminate();
+  // ... xrandr script generation continues
+}
+```
+
+<ParamField path="mode->width" type="int">
+  Primary monitor width in pixels
+</ParamField>
+
+<ParamField path="mode->height" type="int">
+  Primary monitor height in pixels
+</ParamField>
+
+<ParamField path="mode->refreshRate" type="int">
+  Monitor refresh rate in Hz (typically 60, 144, etc.)
+</ParamField>
+
+### Script generation
+
+The function creates a bash script at `/tmp/restaurar_xrandr.sh`:
+
+```c
+const char *script_restauracion = "/tmp/restaurar_xrandr.sh";
+
+FILE *fp = fopen(script_restauracion, "w");
+if (!fp)
+{
+    perror("No se pudo crear el script de restauración");
+    return;
+}
+
+fprintf(fp, "#!/bin/bash\n");
+```
+
+### Primary output detection
+
+From **src/main.c:66-76**:
+
+```c
+// Obtener salida primaria
+FILE *primary_pipe = popen(
+    "xrandr --query | awk '/ connected primary/ {print $1}'", "r");
+char primary_output[32] = {0};
+if (primary_pipe)
+{
+    if (fgets(primary_output, sizeof(primary_output), primary_pipe))
+    {
+        primary_output[strcspn(primary_output, "\n")] = 0; // quitar salto
+    }
+    pclose(primary_pipe);
+}
+```
+
+This AWK command extracts the primary monitor's output name (e.g., "HDMI-1", "DP-1", "eDP-1").
+
+### Multi-monitor configuration
+
+The most complex part generates xrandr commands for **all connected monitors** with their current position and mode.
+
+From **src/main.c:78-106**:
+
+```c
+// Generar comandos xrandr por cada salida activa con modo y posición
+FILE *pipe = popen(
+  "xrandr --query | grep ' connected' | awk '{"
+  " salida=$1;"
+  " for(i=1;i<=NF;i++) if ($i ~ /[0-9]+x[0-9]+\\+[0-9]+\\+[0-9]+/) modo=$i;"
+  " if (modo != \"\") {"
+  " split(modo, parts, /[x+]/);"
+  " ancho=parts[1]; alto=parts[2]; posx=parts[3]; posy=parts[4];"
+  " cmd=\"xrandr --output \" salida \" --mode \" ancho \"x\" alto \" --pos \" posx \"x\" posy;"
+  " for(j=1;j<=NF;j++) if ($j == \"primary\") cmd=cmd \" --primary\";"
+  " print cmd;"
+  " }"
+  "}'\n",
+  "r");
+
+if (!pipe)
+{
+    perror("No se pudo obtener la configuración de pantalla");
+    fclose(fp);
+    return;
+}
+
+char linea[256];
+while (fgets(linea, sizeof(linea), pipe))
+{
+    fputs(linea, fp);
+}
+
+pclose(pipe);
+fclose(fp);
+```
+
+<Accordion title="AWK script breakdown">
+  The AWK script processes xrandr output line by line:
+  
+  1. **Extract output name:** `salida=$1` (e.g., "HDMI-1")
+  2. **Find geometry:** Match pattern like `1920x1080+0+0`
+  3. **Split geometry:** `ancho=1920`, `alto=1080`, `posx=0`, `posy=0`
+  4. **Build command:** `xrandr --output HDMI-1 --mode 1920x1080 --pos 0x0`
+  5. **Add primary flag:** If line contains "primary", append `--primary`
+  6. **Print command:** Each line becomes one xrandr invocation
+</Accordion>
+
+### Example generated script
+
+For a dual-monitor setup:
+
+```bash
+#!/bin/bash
+xrandr --output eDP-1 --mode 1920x1080 --pos 0x0 --primary
+xrandr --output HDMI-1 --mode 2560x1440 --pos 1920x0
+```
+
+### Making the script executable
+
+From **src/main.c:109-110**:
+
+```c
+system("chmod +x /tmp/restaurar_xrandr.sh");
+printf("📝 Script de restauración generado con disposición y salida primaria en %s\n", 
+       script_restauracion);
+```
+
+## Resolution restoration
+
+The `restaurarResolucionOriginal()` function in **src/main.c:114-127** executes the generated script.
+
+```c
+void restaurarResolucionOriginal()
+{
+  if (resolucion_ancho > 0 && resolucion_alto > 0)
+  {
+    printf("Restaurando configuración de monitores desde script...\n");
+    char comando[128];
+    snprintf(comando, sizeof(comando), "%s", script_restauracion);
+    system(comando);
+  }
+  else
+  {
+    fprintf(stderr, "Resolución original no válida, no se puede restaurar.\n");
+  }
+}
+```
+
+<Note>
+The validation check ensures that GLFW successfully detected a resolution before attempting restoration. This prevents executing an empty or malformed script.
+</Note>
+
+### Called from main
+
+From **src/main.c:184-193**:
+
+```c
+guardarResolucionOriginal();  // Before SDL init
+
+init_gfx();
+TimerStart(timerfunc, 18);
+getsprites();
+menu_opciones(TRUE);
+
+stargame(&fan, &pc, COMENZAR);
+restaurarResolucionOriginal();  // After game exits
+
+exit(0);
+```
+
+## xrandr availability check
+
+The `xrandr_disponible()` function in **src/main.c:129-138** verifies xrandr is installed:
+
+```c
+int xrandr_disponible()
+{
+  // Comprobamos si xrandr está en /usr/bin
+  if (access("/usr/bin/xrandr", X_OK) == 0)
+  {
+    return 1;
+  }
+  // Alternativamente, usamos `which xrandr`
+  return (system("which xrandr > /dev/null 2>&1") == 0);
+}
+```
+
+This checks:
+1. Direct path check: `/usr/bin/xrandr` with execute permission
+2. Fallback: `which xrandr` searches PATH
+
+### Setup function
+
+From **src/main.c:140-151**:
+
+```c
+void setup()
+{
+  if (!xrandr_disponible())
+  {
+    fprintf(stderr, "⚠️  ADVERTENCIA: 'xrandr' no está disponible en el sistema.\n");
+    fprintf(stderr, "No se podrá guardar ni restaurar la resolución automáticamente.\n\n");
+  }
+  else
+  {
+    printf("✅ xrandr disponible. Se podrá guardar/restaurar la configuración de pantalla.\n");
+  }
+}
+```
+
+This is called at the very start of `main()` (main.c:162) to warn users if resolution management won't work.
+
+## Static variables
+
+Resolution state is stored in file-scope static variables in **main.c:15-18**:
+
+```c
+static int resolucion_ancho = 0;
+static int resolucion_alto = 0;
+static int refresco_hz = 0;
+static const char *script_restauracion = "/tmp/restaurar_xrandr.sh";
+```
+
+<ParamField path="resolucion_ancho" type="int" default="0">
+  Detected primary monitor width
+</ParamField>
+
+<ParamField path="resolucion_alto" type="int" default="0">
+  Detected primary monitor height
+</ParamField>
+
+<ParamField path="refresco_hz" type="int" default="0">
+  Detected refresh rate in Hz
+</ParamField>
+
+<ParamField path="script_restauracion" type="const char*">
+  Path to the generated restoration script
+</ParamField>
+
+## Error handling
+
+### GLFW initialization failure
+
+If GLFW fails to initialize (main.c:26-30):
+```c
+if (!glfwInit())
+{
+    fprintf(stderr, "No se pudo inicializar GLFW\n");
+    return;  // Continue without resolution backup
+}
+```
+
+The game continues running but resolution won't be restored.
+
+### Monitor query failure
+
+If no monitor is detected (main.c:32-38):
+```c
+GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+if (!monitor)
+{
+    fprintf(stderr, "No se pudo obtener el monitor principal\n");
+    glfwTerminate();
+    return;
+}
+```
+
+### Script creation failure
+
+If the script file can't be created (main.c:58-62):
+```c
+FILE *fp = fopen(script_restauracion, "w");
+if (!fp)
+{
+    perror("No se pudo crear el script de restauración");
+    return;
+}
+```
+
+All failures are non-fatal - the game proceeds, but resolution restoration is skipped.
+
+## Why this approach?
+
+<Accordion title="Advantages">
+  1. **Multi-monitor aware:** Restores all displays, not just primary
+  2. **Crash-safe:** Script persists in `/tmp` even if game crashes
+  3. **Position preservation:** Maintains monitor arrangement (laptop left of external monitor, etc.)
+  4. **Primary display:** Correctly sets which monitor is primary
+  5. **Independent libraries:** GLFW for detection, xrandr for restoration
+</Accordion>
+
+<Accordion title="Limitations">
+  1. **Linux-only:** xrandr is X11-specific
+  2. **Requires xrandr:** Silently fails if not installed
+  3. **No Wayland support:** Uses X11 tools exclusively
+  4. **Manual script execution:** Uses `system()` calls
+</Accordion>
+
+## Alternative approaches
+
+Other methods that could be used:
+
+<Tabs>
+  <Tab title="SDL_SetDisplayMode">
+    SDL 2.0+ has `SDL_SetDisplayMode()` for resolution changes, but:
+    - Pacman uses SDL 1.2 (no built-in resolution management)
+    - Doesn't handle multi-monitor layouts
+    - Less control over restoration
+  </Tab>
+  <Tab title="X11 XRandR library">
+    Could use XRandR C library directly instead of shell commands:
+    ```c
+    #include <X11/extensions/Xrandr.h>
+    ```
+    
+    Pros: Programmatic control
+    
+    Cons: More complex, requires X11 development headers
+  </Tab>
+  <Tab title="Config file">
+    Save configuration to a file instead of generating script:
+    ```c
+    FILE *cfg = fopen("~/.pacman_resolution", "w");
+    fprintf(cfg, "%dx%d@%d\n", width, height, refresh);
+    ```
+    
+    Pros: Simpler
+    
+    Cons: Doesn't handle multi-monitor, requires parsing on restore
+  </Tab>
+</Tabs>
+
+## Integration with SDL
+
+The resolution management happens **before** SDL initialization:
+
+```c
+main()
+  |
+  +-- setup()                       // Check xrandr availability
+  +-- guardarResolucionOriginal()   // GLFW detection + script generation
+  +-- init_gfx()                    // SDL init (may change resolution)
+  +-- ... game runs ...
+  +-- restaurarResolucionOriginal() // Execute xrandr script
+  +-- exit()
+```
+
+SDL's `atexit(SDL_Quit)` (gfx.c:27) ensures SDL cleanup happens before the restoration script runs.
+
+## Testing the system
+
+To test resolution management:
+
+```bash
+# Run in fullscreen
+./pacman -f
+
+# Check generated script
+cat /tmp/restaurar_xrandr.sh
+
+# Should see xrandr commands for all monitors
+# Example output:
+#!/bin/bash
+xrandr --output eDP-1 --mode 1920x1080 --pos 0x0 --primary
+xrandr --output HDMI-1 --mode 2560x1440 --pos 1920x0
+
+# Verify restoration works after quit
+xrandr --query  # Should match original configuration
+```

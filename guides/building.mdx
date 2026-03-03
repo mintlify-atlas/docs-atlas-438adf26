@@ -1,0 +1,326 @@
+---
+title: Building the game
+description: Complete guide to compiling Pacman from source with detailed build instructions and troubleshooting tips
+---
+
+This guide covers the complete build process for compiling the Pacman game from source code.
+
+## Prerequisites
+
+Before building, ensure you have all required development libraries installed on your Linux system.
+
+### Required libraries
+
+The game requires the following development packages:
+
+- `libsdl1.2-dev` - SDL 1.2 graphics library
+- `libsdl-image1.2-dev` - SDL image loading library
+- `libglfw3-dev` - GLFW for resolution management
+- `libmikmod-dev` - MikMod audio library
+- `x11-utils` - X11 utilities including xrandr
+
+<Tabs>
+  <Tab title="Debian/Ubuntu">
+    Install all dependencies with a single command:
+    
+    ```bash
+    sudo apt install libsdl1.2-dev libsdl-image1.2-dev libglfw3-dev libmikmod-dev x11-utils
+    ```
+  </Tab>
+  <Tab title="Fedora/RHEL">
+    ```bash
+    sudo dnf install SDL-devel SDL_image-devel glfw-devel libmikmod-devel xorg-x11-utils
+    ```
+  </Tab>
+  <Tab title="Arch Linux">
+    ```bash
+    sudo pacman -S sdl sdl_image glfw libmikmod xorg-xrandr
+    ```
+  </Tab>
+</Tabs>
+
+## Build configuration
+
+The project uses a traditional Makefile build system. Let's examine the key configuration options.
+
+### Compiler settings
+
+The Makefile is configured with the following settings:
+
+```makefile
+CC = gcc
+INCLUDEDIR = /usr/include/SDL
+INCLUDESRCDIR = src/include
+
+CFLAGS = -DLINUX -O3 -ggdb -ffast-math -funroll-loops \
+         -fomit-frame-pointer -Wall -pipe \
+         -I$(INCLUDEDIR) -I$(INCLUDESRCDIR)
+
+LDFLAGS = -L/usr/lib -lSDL -lSDL_image -lm -lmikmod -lglfw
+```
+
+<Accordion title="Understanding the compiler flags">
+  - `-DLINUX` - Defines the Linux platform macro
+  - `-O3` - Maximum optimization level for performance
+  - `-ggdb` - Generate debug information for GDB
+  - `-ffast-math` - Enable fast floating-point optimizations
+  - `-funroll-loops` - Unroll loops for better performance
+  - `-fomit-frame-pointer` - Omit frame pointer for more registers
+  - `-Wall` - Enable all compiler warnings
+  - `-pipe` - Use pipes instead of temporary files
+</Accordion>
+
+### Source files
+
+The build includes these source modules:
+
+```makefile
+SRC = src/main.c \
+      src/gfx.c \
+      src/menuopt.c \
+      src/mov_fig.c \
+      src/sprites.c \
+      src/movefant.c \
+      src/misc.c
+```
+
+## Building the game
+
+Follow these steps to compile the game.
+
+<Steps>
+  <Step title="Navigate to source directory">
+    Open a terminal and change to the project directory:
+    
+    ```bash
+    cd /path/to/pacman
+    ```
+  </Step>
+  
+  <Step title="Verify dependencies">
+    Ensure all required libraries are installed:
+    
+    ```bash
+    pkg-config --exists sdl && echo "SDL found" || echo "SDL missing"
+    which xrandr && echo "xrandr found" || echo "xrandr missing"
+    ```
+  </Step>
+  
+  <Step title="Compile the game">
+    Run make to build the executable:
+    
+    ```bash
+    make
+    ```
+    
+    This will compile all source files and link them into the `pacman` executable.
+  </Step>
+  
+  <Step title="Verify the build">
+    Check that the executable was created:
+    
+    ```bash
+    ls -lh pacman
+    ```
+    
+    You should see the `pacman` binary in the current directory.
+  </Step>
+</Steps>
+
+## Build output
+
+During a successful build, you'll see output similar to:
+
+```bash
+gcc -DLINUX -O3 -ggdb -ffast-math -funroll-loops -fomit-frame-pointer -Wall -pipe \
+    -I/usr/include/SDL -Isrc/include -c src/main.c -o src/main.o
+gcc -DLINUX -O3 -ggdb -ffast-math -funroll-loops -fomit-frame-pointer -Wall -pipe \
+    -I/usr/include/SDL -Isrc/include -c src/gfx.c -o src/gfx.o
+...
+gcc -DLINUX -O3 -ggdb -ffast-math -funroll-loops -fomit-frame-pointer -Wall -pipe \
+    src/main.o src/gfx.o src/menuopt.o src/mov_fig.o src/sprites.o src/movefant.o src/misc.o \
+    -o pacman -L/usr/lib -lSDL -lSDL_image -lm -lmikmod -lglfw
+```
+
+## Cleaning and rebuilding
+
+To clean up build artifacts and start fresh:
+
+### Clean build files
+
+Remove all compiled object files and the executable:
+
+```bash
+make clean
+```
+
+This command removes:
+- All `.o` object files in the `src/` directory
+- The `pacman` executable
+
+### Full rebuild
+
+To perform a complete clean rebuild:
+
+```bash
+make clean && make
+```
+
+<Note>
+  It's good practice to run `make clean` before rebuilding if you've made changes to header files, as Make may not detect all dependencies.
+</Note>
+
+## Troubleshooting
+
+Common build issues and their solutions.
+
+### SDL headers not found
+
+**Error:**
+```
+fatal error: SDL.h: No such file or directory
+```
+
+**Solution:**
+```bash
+# Install SDL development packages
+sudo apt install libsdl1.2-dev
+
+# Or specify custom SDL path in Makefile
+export INCLUDEDIR=/usr/local/include/SDL
+```
+
+### GLFW library not found
+
+**Error:**
+```
+/usr/bin/ld: cannot find -lglfw
+```
+
+**Solution:**
+```bash
+# Install GLFW development library
+sudo apt install libglfw3-dev
+
+# Verify library is installed
+ldconfig -p | grep glfw
+```
+
+### xrandr not available
+
+**Warning:**
+```
+WARNING: 'xrandr' not available on the system.
+Resolution cannot be saved or restored automatically.
+```
+
+**Solution:**
+```bash
+# Install X11 utilities
+sudo apt install x11-utils
+
+# Verify xrandr is available
+which xrandr
+xrandr --version
+```
+
+<Warning>
+  Without xrandr, the game will still run but won't be able to restore your original screen resolution and multi-monitor configuration after exiting.
+</Warning>
+
+### Permission denied when running make
+
+**Error:**
+```
+make: *** [pacman] Error 1
+Permission denied
+```
+
+**Solution:**
+```bash
+# Ensure you have write permissions in the directory
+ls -la
+
+# If needed, change ownership
+sudo chown -R $USER:$USER .
+```
+
+### Compiler optimization issues
+
+If you experience crashes or odd behavior, try building with less aggressive optimization:
+
+```bash
+# Edit Makefile and change -O3 to -O2
+# Then rebuild
+make clean && make
+```
+
+## Custom build options
+
+You can customize the build by modifying the Makefile or passing options to make.
+
+### Debug build
+
+For debugging with GDB, the default build includes `-ggdb`. To run with debugger:
+
+```bash
+make
+gdb ./pacman
+```
+
+### Release build without debug symbols
+
+Edit the Makefile and remove `-ggdb` from CFLAGS, or create a separate target:
+
+```makefile
+release: CFLAGS := $(filter-out -ggdb,$(CFLAGS))
+release: pacman
+```
+
+Then build with:
+
+```bash
+make release
+```
+
+### Static linking
+
+To create a more portable executable with static libraries:
+
+```bash
+make LDFLAGS="-L/usr/lib -static -lSDL -lSDL_image -lm -lmikmod -lglfw"
+```
+
+<Note>
+  Static linking may not work with all libraries, particularly if they depend on dynamic system libraries.
+</Note>
+
+## Verifying the build
+
+After building, verify the executable is properly linked:
+
+```bash
+# Check linked libraries
+ldd ./pacman
+
+# Check file type
+file ./pacman
+
+# Test run (see Running guide for details)
+./pacman -w
+```
+
+Expected output from `ldd` should show:
+- `libSDL-1.2.so.0`
+- `libSDL_image-1.2.so.0`
+- `libglfw.so.3`
+- `libmikmod.so.3`
+- Standard system libraries (libc, libm, etc.)
+
+## Next steps
+
+Now that you've built the game successfully:
+
+- Learn how to [run the game](/guides/running) with different options
+- Understand the [game controls](/guides/controls) and mechanics
+- Explore the source code to customize the game

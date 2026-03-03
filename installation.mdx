@@ -1,0 +1,196 @@
+---
+title: Installation
+description: System requirements and step-by-step guide to install all dependencies for Pacman
+---
+
+## System requirements
+
+Pacman is designed for Linux systems running X11 window manager. The game has been developed and tested on Debian Testing, but should work on most Debian-based distributions.
+
+### Minimum requirements
+
+- **Operating System**: Linux with X11
+- **Architecture**: i386 or x86_64
+- **Display**: Any resolution (320x200 game resolution will be scaled)
+- **Audio**: ALSA or PulseAudio compatible sound system
+- **Tools**: GCC compiler, Make, xrandr utility
+
+## Required dependencies
+
+The game requires several development libraries to compile and run:
+
+<CardGroup cols={2}>
+  <Card title="libsdl1.2-dev" icon="window">
+    SDL 1.2 development libraries for graphics and window management
+  </Card>
+  
+  <Card title="libsdl-image1.2-dev" icon="image">
+    SDL Image library for loading BMP sprites and textures
+  </Card>
+  
+  <Card title="libglfw3-dev" icon="screen-users">
+    GLFW library for monitor resolution detection and management
+  </Card>
+  
+  <Card title="libmikmod-dev" icon="volume">
+    MikMod library for audio and sound effects playback
+  </Card>
+  
+  <Card title="x11-utils" icon="terminal">
+    X11 utilities including xrandr for display configuration
+  </Card>
+</CardGroup>
+
+## Installation steps
+
+<Steps>
+  <Step title="Update package lists">
+    First, ensure your package lists are up to date:
+    
+    ```bash
+    sudo apt update
+    ```
+    
+    This refreshes the package database to ensure you get the latest versions.
+  </Step>
+  
+  <Step title="Install all dependencies">
+    Install all required libraries in a single command:
+    
+    ```bash
+    sudo apt install libsdl1.2-dev libsdl-image1.2-dev libglfw3-dev libmikmod-dev x11-utils
+    ```
+    
+    The installation process will:
+    - Download approximately 15-20 MB of packages
+    - Install SDL 1.2 core and image libraries
+    - Set up GLFW for monitor detection
+    - Configure MikMod for audio playback
+    - Install xrandr and other X11 utilities
+    
+    <Note>
+    On Ubuntu-based systems, you may be prompted to confirm the installation. Press `Y` to continue.
+    </Note>
+  </Step>
+  
+  <Step title="Verify xrandr availability">
+    Confirm that xrandr is properly installed and accessible:
+    
+    ```bash
+    which xrandr
+    ```
+    
+    You should see output like `/usr/bin/xrandr`. If xrandr is not found, the game will display a warning but can still run without automatic resolution restoration.
+    
+    The game checks for xrandr at startup:
+    
+    ```c src/main.c
+    int xrandr_disponible() {
+        if (access("/usr/bin/xrandr", X_OK) == 0) {
+            return 1;
+        }
+        return (system("which xrandr > /dev/null 2>&1") == 0);
+    }
+    ```
+  </Step>
+  
+  <Step title="Install build tools (if needed)">
+    If you don't have GCC and Make installed, add them:
+    
+    ```bash
+    sudo apt install build-essential
+    ```
+    
+    This meta-package includes:
+    - GCC C compiler
+    - GNU Make
+    - Standard C libraries
+    - Development tools
+  </Step>
+</Steps>
+
+## Platform-specific notes
+
+### Debian / Ubuntu
+
+The installation commands above are designed for Debian and Ubuntu systems. These distributions use the APT package manager and have all required libraries in their default repositories.
+
+### Other distributions
+
+<AccordionGroup>
+  <Accordion title="Fedora / RHEL / CentOS">
+    On Red Hat-based distributions, use DNF or YUM:
+    
+    ```bash
+    sudo dnf install SDL-devel SDL_image-devel glfw-devel libmikmod-devel xorg-x11-utils
+    ```
+  </Accordion>
+  
+  <Accordion title="Arch Linux">
+    On Arch-based distributions, use Pacman:
+    
+    ```bash
+    sudo pacman -S sdl sdl_image glfw-x11 libmikmod xorg-xrandr
+    ```
+  </Accordion>
+  
+  <Accordion title="openSUSE">
+    On openSUSE, use Zypper:
+    
+    ```bash
+    sudo zypper install libSDL-devel libSDL_image-devel glfw3-devel libmikmod-devel xrandr
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Verifying installation
+
+After installing dependencies, verify that key libraries are available:
+
+```bash
+# Check SDL
+pkg-config --modversion sdl
+
+# Check SDL_image
+pkg-config --modversion SDL_image
+
+# Check GLFW
+pkg-config --modversion glfw3
+```
+
+Each command should return a version number. If any command fails, that library may not be properly installed.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="SDL 1.2 is deprecated, should I use SDL2?">
+    This game specifically requires SDL 1.2, not SDL2. While SDL 1.2 is considered legacy, it's still available in most distribution repositories and works perfectly for this classic-style game. The codebase is not compatible with SDL2 without significant modifications.
+  </Accordion>
+  
+  <Accordion title="xrandr warnings on startup">
+    If you see warnings about xrandr not being available:
+    
+    ```
+    ⚠️  ADVERTENCIA: 'xrandr' no está disponible en el sistema.
+    No se podrá guardar ni restaurar la resolución automáticamente.
+    ```
+    
+    The game will still run, but won't automatically restore your display configuration on exit. Install x11-utils to enable this feature.
+  </Accordion>
+  
+  <Accordion title="Missing header files during compilation">
+    If you get compilation errors about missing headers like `SDL.h` or `GLFW/glfw3.h`, ensure you installed the `-dev` or `-devel` packages, not just the runtime libraries. Development packages contain the header files needed for compilation.
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+This game requires the X11 window system and will not run on Wayland without XWayland compatibility layer. If you're using Wayland, ensure XWayland is installed and enabled.
+</Warning>
+
+## Next steps
+
+With all dependencies installed, you're ready to compile and run the game:
+
+<Card title="Continue to Quickstart" icon="rocket" href="/quickstart">
+  Learn how to compile the game with Make and start playing
+</Card>

@@ -1,0 +1,133 @@
+---
+title: Command-line reference
+description: Complete reference for Pacman command-line options and usage
+---
+
+The Pacman game accepts command-line options to control display mode at startup.
+
+## Usage
+
+```bash
+./pacman [options]
+```
+
+<Note>
+  You must specify either `-f` or `-w` flag when running the game. Running without options will display the help message.
+</Note>
+
+## Options
+
+<ParamField path="-f" type="flag">
+  Launch the game in fullscreen mode.
+  
+  This option sets the SDL video flags to include `SDL_FULLSCREEN`, enabling native fullscreen display.
+  
+  **Example:**
+  ```bash
+  ./pacman -f
+  ```
+  
+  <Accordion title="Technical details">
+    When fullscreen mode is enabled, the game:
+    - Saves the current monitor resolution using GLFW
+    - Generates a restoration script at `/tmp/restaurar_xrandr.sh`
+    - Stores display configuration including:
+      - Resolution of each connected output
+      - Position and layout of multiple monitors
+      - Primary display designation
+    - Restores the original configuration when the game exits
+  </Accordion>
+</ParamField>
+
+<ParamField path="-w" type="flag">
+  Launch the game in windowed mode.
+  
+  This option runs the game in a standard window without changing the desktop resolution.
+  
+  **Example:**
+  ```bash
+  ./pacman -w
+  ```
+</ParamField>
+
+<ParamField path="-h" type="flag">
+  Display help message and exit.
+  
+  Shows usage information with available command-line options.
+</ParamField>
+
+## Display configuration
+
+### Resolution restoration
+
+When the game runs in fullscreen mode (`-f`), it automatically:
+
+1. **Saves current configuration** - Uses GLFW to detect the primary monitor's resolution, refresh rate, and uses `xrandr` to capture multi-monitor layouts
+2. **Generates restoration script** - Creates `/tmp/restaurar_xrandr.sh` with `xrandr` commands to restore the exact configuration
+3. **Restores on exit** - Executes the restoration script when the game closes
+
+<Note>
+  The restoration process may take 1-2 seconds, especially with multiple monitors.
+</Note>
+
+### Multi-monitor support
+
+The resolution restoration system supports:
+
+- Multiple connected displays
+- Extended desktop layouts (relative positioning)
+- Primary display designation
+- Individual resolution and refresh rate per monitor
+
+### Requirements
+
+<Warning>
+  The `xrandr` utility must be available on your system for resolution restoration to work. If not found, the game will display a warning but will still run.
+</Warning>
+
+The game checks for `xrandr` availability at startup in `/usr/bin/xrandr` or via the `which` command.
+
+## Exit codes
+
+The game exits with status code `0` on normal termination.
+
+## Implementation details
+
+The command-line parsing is implemented in `src/main.c:166-179` using the standard `getopt()` function.
+
+### SDL flags
+
+The game uses different SDL video flags based on the display mode:
+
+**Windowed mode (`-w`):**
+```c
+SDL_SWSURFACE | SDL_HWPALETTE | SDL_DOUBLEBUF
+```
+
+**Fullscreen mode (`-f`):**
+```c
+SDL_SWSURFACE | SDL_HWPALETTE | SDL_DOUBLEBUF | SDL_FULLSCREEN
+```
+
+## Examples
+
+<CodeGroup>
+
+```bash Fullscreen mode
+./pacman -f
+```
+
+```bash Windowed mode
+./pacman -w
+```
+
+```bash Display help
+./pacman -h
+```
+
+</CodeGroup>
+
+## See also
+
+- [Dependencies reference](/reference/dependencies) - Required libraries
+- [File structure](/reference/file-structure) - Project organization
